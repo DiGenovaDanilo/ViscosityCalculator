@@ -1,0 +1,7 @@
+﻿model/
+__pycache__/
+*.pyc
+*.zip
+*.lnk
+build/
+dist/
