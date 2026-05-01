@@ -167,8 +167,25 @@ with st.sidebar:
 # ── File upload ───────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload your CSV file", type=["csv"])
 
+# Template CSV content
+TEMPLATE_CSV = (
+    "Sample,SiO2,TiO2,Al2O3,FeO,MnO,MgO,CaO,Na2O,K2O,P2O5,Cr2O3,Fe2O3,H2O,Reference\n"
+    "1,78.1,0.1,12.02,1.6,0.04,0.06,0.9,1.0,5.2,0.02,0,0,0,Unknown\n"
+    "2,64.04,0.6,19.0,3.2,0.2,2.3,6.0,4.5,1.6,0,0,0,0,Unknown\n"
+    "3,53.0,0.88,20.0,4.0,0,3.18,9.1,4.0,1.0,0.2,0,4.0,0,Unknown\n"
+    "4,46.1,2.3,13.0,11.2,0.4,11.6,11.13,2.4,1.1,0.6,0,0,0,Unknown\n"
+)
+
+st.download_button(
+    label="📄 Download CSV template",
+    data=TEMPLATE_CSV,
+    file_name="Example_compositions.csv",
+    mime="text/csv",
+    help="Download this template, fill in your compositions and upload it above."
+)
+
 if uploaded is None:
-    st.info("👆 Upload a CSV file to get started.")
+    st.info("👆 Upload a CSV file to get started. Download the template above if needed.")
     st.stop()
 
 df = pd.read_csv(uploaded).dropna(how='all').reset_index(drop=True)
