@@ -232,7 +232,8 @@ def make_visc_sheet_hydrous(wb, sheet_name, results, m_func, tg_model_func, hdr_
 # ==============================================================================
 for key in ['calc_done','all_curves','rows_recalc','tg_m_dict','skipped',
             'fig','df_input','rows_specific',
-            'hyd_done','hyd_results','hyd_fig','hyd_buf_excel']:
+            'hyd_done','hyd_results','hyd_fig','hyd_buf_excel',
+            'hyd_buf_fig','hyd_meta','visc_h2o','wt_dry','non_mono']:
     if key not in st.session_state:
         st.session_state[key] = None
 if st.session_state['calc_done'] is None:
@@ -295,6 +296,8 @@ Langhammer et al. (2022), *GGG*
 Langhammer et al. (2021), *GGG*  
 [doi:10.1029/2021GC009918](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918)
     """)
+    st.divider()
+    st.markdown("**Questions?** ✉️ [danilo.digenova@cnr.it](mailto:danilo.digenova@cnr.it)")
 
 # ==============================================================================
 # MODE 1 — VISCOSITY CALCULATOR
@@ -349,7 +352,6 @@ if mode == "🔷 Viscosity Calculator":
                 T_array=np.arange(Tg,T_max+50,50)
                 visc_array=myega_eq(T_array,Tg,m)
                 ax.plot(T_array-273.15,visc_array,color=colors[idx],linewidth=1.5,label=sname)
-                ax.scatter([Tg-273.15],[myega_eq(Tg,Tg,m)],color=colors[idx],marker='D',s=40,zorder=5)
                 for i,(T,v) in enumerate(zip(T_array,visc_array)):
                     all_curves.append({
                         'Sample':   sname if i==0 else '',
@@ -521,8 +523,12 @@ else:
 
     st.title("💧 Anhydrous and Hydrous Modelling")
     st.markdown("""
-Model how **Tg, fragility index m and viscosity** evolve as a function of H₂O content,
-using the **Langhammer et al. (2021)** framework (Eq. 9-10, 12).  
+Model how **Tg, fragility index m and viscosity** evolve as a function of H₂O content.  
+Melt viscosity is calculated using the Artificial Neural Network (ANN) of
+[Langhammer et al. (2022)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2022GC010673).  
+The dependence of Tg and m on water content follows the framework of
+[Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918)
+(Eq. 9-10, 12).  
 Upload a CSV with **one anhydrous composition** (H₂O = 0).
     """)
 
@@ -576,8 +582,14 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             st.error("No valid rows found in the CSV.")
             st.stop()
         if len(df_h) > 1:
-            st.warning(f"Found {len(df_h)} rows — using only the first row.")
-        df_h = df_h.iloc[[0]]
+            selected_sample = st.selectbox(
+                "Found {} compositions — select one to model:".format(len(df_h)),
+                options=df_h["Sample"].tolist(),
+                key="hyd_sample_select"
+            )
+            df_h = df_h[df_h["Sample"] == selected_sample].reset_index(drop=True)
+        else:
+            df_h = df_h.iloc[[0]]
 
     else:  # Manual input
         st.markdown("**Enter your anhydrous composition in wt% (H₂O = 0):**")
@@ -631,6 +643,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         wt_orig[12] = 0.0  # ensure anhydrous
         wt_dry, _ = redistribute_iron(wt_orig)
         wt_dry = normalize_to_100(wt_dry)
+        st.session_state['wt_dry'] = wt_dry
 
         results = []
         progress = st.progress(0, text="Calculating ANN points...")
@@ -659,19 +672,89 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         with st.spinner("Fitting Tg(H₂O) with Eq. 9-10..."):
             (b_fit, c_fit, d_fit), tg_rmse = fit_tg(x_mol_arr, Tg_arr, Tg_d)
 
-        # Fit m poly
-        poly1 = np.polyfit(x_mol_arr, m_arr, 1)
-        poly2 = np.polyfit(x_mol_arr, m_arr, 2)
-        rmse1 = np.sqrt(np.mean((np.polyval(poly1,x_mol_arr)-m_arr)**2))
-        rmse2 = np.sqrt(np.mean((np.polyval(poly2,x_mol_arr)-m_arr)**2))
-        m_poly = poly2 if (rmse1-rmse2)>0.05 else poly1
-        poly_deg = 2 if (rmse1-rmse2)>0.05 else 1
+        # ── Monotone detection ────────────────────────────────────────────────
+        # The ANN can produce m that increases at high H2O (unphysical).
+        # Find the last index where m is still monotonically decreasing.
+        mono_mask = np.ones(len(m_arr), dtype=bool)
+        _m_min = m_arr[0]
+        for _i in range(1, len(m_arr)):
+            if m_arr[_i] < _m_min:
+                _m_min = m_arr[_i]
+            else:
+                mono_mask[_i:] = False
+                break
+        non_mono_detected = not np.all(mono_mask)
+        x_fit  = x_mol_arr[mono_mask]
+        m_fit  = m_arr[mono_mask]
+
+        # ── Fit m with ANCHORED polynomial (passes through m_d at x=0) ───────
+        from scipy.optimize import curve_fit as _cf
+        dm_fit = m_fit - m_d
+
+        def _anch_lin(x, alpha):
+            return alpha * x
+        def _anch_quad(x, alpha, beta):
+            return alpha*x + beta*x**2
+
+        # ── Exponential saturation fit: m(x) = m_inf + (m_d - m_inf)*exp(-k*x)
+        # - Always anchored at m_d at x=0
+        # - Always monotone decreasing if m_inf < m_d and k > 0
+        # - Captures the steep initial drop + flattening at high H2O
+
+        def _exp_sat(x, m_inf, k):
+            return m_inf + (m_d - m_inf) * np.exp(-k * x)
+
+        best_rmse = np.inf
+        best_params = None
+        for m_inf_0 in [m_d * 0.5, m_d * 0.6, m_d * 0.7, m_d * 0.8, 20.0, 25.0]:
+            for k_0 in [0.1, 0.2, 0.3, 0.5, 1.0]:
+                try:
+                    popt, _ = _cf(_exp_sat, x_fit, m_fit,
+                                  p0=[m_inf_0, k_0],
+                                  bounds=([0, 1e-4], [m_d - 0.1, 10.0]),
+                                  maxfev=2000)
+                    r = np.sqrt(np.mean((_exp_sat(x_fit, *popt) - m_fit)**2))
+                    if r < best_rmse:
+                        best_rmse = r
+                        best_params = popt
+                except: pass
+
+        if best_params is not None:
+            _m_inf = float(best_params[0])
+            _k     = float(best_params[1])
+        else:
+            # Fallback: linear anchored
+            _m_inf = float(m_d * 0.7)
+            _k     = 0.2
+
+        m_poly_anchored = lambda x, mi=_m_inf, k=_k, md=m_d: mi + (md - mi)*np.exp(-k*x)
+        poly_deg   = 1   # label only
+        _alpha     = _k
+        _beta      = _m_inf
+        poly_rmse  = best_rmse
+        poly_label = 'm_inf + (m_d - m_inf)·exp(-k·x)  [m_inf={:.2f}, k={:.4f}]'.format(_m_inf, _k)
+
+        m_poly = m_poly_anchored
+        poly_label = ('m_d + {:.4f}·x + {:.4f}·x²'.format(_alpha, _beta)
+                      if poly_deg==2 else 'm_d + {:.4f}·x'.format(_alpha))
+
+        # Save to session state and warn if non-monotone behaviour detected
+        st.session_state['non_mono'] = non_mono_detected
+        if non_mono_detected:
+            n_valid   = int(mono_mask.sum())
+            x_cutoff  = float(x_mol_arr[mono_mask][-1])
+            st.warning(
+                f"⚠️ **Non-monotone m detected**: the ANN shows m increasing beyond "
+                f"{x_cutoff:.1f} mol% H₂O, which is physically unreasonable. "
+                f"The polynomial fit uses only the first **{n_valid} monotone points** "
+                f"(up to {x_cutoff:.1f} mol%). See Langhammer et al. (2021) for discussion."
+            )
 
         # Smooth curves
         x_smooth   = np.linspace(0, max(x_mol_arr)*1.05, 200)
         Tg_smooth  = np.array([tg_model(x, b_fit, c_fit, d_fit, Tg_d) for x in x_smooth])
         m_eq12_sm  = np.array([m_from_tg(Tg, Tg_d, m_d) for Tg in Tg_smooth])
-        m_poly_sm  = np.polyval(m_poly, x_smooth)
+        m_poly_sm  = np.array([m_poly(x) for x in x_smooth])
 
         # ── Figure: 5 panels ─────────────────────────────────────────────────
         colors_visc = cm.plasma(np.linspace(0.1, 0.9, len(results)))
@@ -690,9 +773,18 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
 
         # Panel 2: m vs H2O
         ax2 = axes[1]
-        ax2.scatter(x_mol_arr, m_arr, color='tomato', s=60, zorder=5, label='ANN calculated')
+        _mm = np.ones(len(m_arr), dtype=bool)
+        _mn = m_arr[0]
+        for _ii in range(1, len(m_arr)):
+            if m_arr[_ii] < _mn: _mn = m_arr[_ii]
+            else: _mm[_ii:] = False; break
+        ax2.scatter(x_mol_arr[_mm], m_arr[_mm], color='tomato', s=60, zorder=5,
+                    label='ANN (used for fit)')
+        if not np.all(_mm):
+            ax2.scatter(x_mol_arr[~_mm], m_arr[~_mm], color='lightgray', s=60,
+                        marker='x', linewidths=2, zorder=5, label='ANN (excluded)')
         ax2.plot(x_smooth, m_eq12_sm, 'tomato', linewidth=2, linestyle='--', label='Eq. 12 (from Tg fit)')
-        ax2.plot(x_smooth, m_poly_sm, 'darkorange', linewidth=2, label='Poly deg-{} (ANN)'.format(poly_deg))
+        ax2.plot(x_smooth, m_poly_sm, 'darkorange', linewidth=2, label='Exp. saturation (ANN)')
         ax2.axhline(m_d, color='steelblue', linewidth=2, linestyle=':', label='m constant = {:.2f}'.format(m_d))
         ax2.set_xlabel('H$_2$O (mol%)', fontsize=11)
         ax2.set_ylabel('Fragility index m', fontsize=11)
@@ -710,8 +802,6 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                 ax.plot(T_arr2-273.15, myega_eq(T_arr2, Tg_f, m_v),
                         color=colors_visc[i], linewidth=2,
                         label='{:.1f} wt%'.format(r['h2o_wt']))
-                ax.scatter([Tg_f-273.15], [myega_eq(Tg_f, Tg_f, m_v)],
-                           color=colors_visc[i], marker='D', s=40, zorder=5)
             ax.set_xlabel('Temperature (°C)', fontsize=11)
             ax.set_ylabel('log$_{10}$(η / Pa·s)', fontsize=11)
             ax.set_title(title, fontsize=11)
@@ -724,7 +814,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                    lambda x: m_from_tg(tg_model(x, b_fit, c_fit, d_fit, Tg_d), Tg_d, m_d),
                    'm from Eq. 12')
         visc_panel(axes[4],
-                   lambda x: np.polyval(m_poly, x),
+                   lambda x: float(m_poly(x)),
                    'm poly deg-{} (ANN fit)'.format(poly_deg))
 
         plt.tight_layout()
@@ -757,9 +847,10 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             ('c (Eq.10)',    round(c_fit,5),      'Tg(H2O) fit param c'),
             ('d (Eq.10)',    round(d_fit,5),      'Tg(H2O) fit param d'),
             ('Tg fit RMSE (K)', round(tg_rmse,3), 'RMSE of Tg(H2O) fit'),
-            ('poly_coeff_0', round(m_poly[0],6),  'Poly m — leading coeff'),
-            ('poly_coeff_1', round(m_poly[1],6),  'Poly m — second coeff'),
-            ('poly_intercept',round(m_poly[-1],6),'Poly m — intercept'),
+            ('m_exp_m_inf',  round(_m_inf, 4), 'm limiting value at high H2O'),
+            ('m_exp_k',      round(_k, 6),    'Exp. decay rate k'),
+            ('m_model_RMSE', round(poly_rmse, 4), 'RMSE of exponential saturation fit'),
+            ('m_model_form', 'm_inf + (m_d - m_inf)*exp(-k*x)', 'Exponential saturation model'),
         ]
         for c,h in enumerate(['Parameter','Value','Description'],1):
             cell=ws_p.cell(row=1,column=c,value=h)
@@ -783,7 +874,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         for r,res_r in enumerate(results,2):
             Tg_f   = tg_model(res_r['h2o_mol'], b_fit, c_fit, d_fit, Tg_d)
             m_eq12 = m_from_tg(Tg_f, Tg_d, m_d)
-            m_p    = float(np.polyval(m_poly, res_r['h2o_mol']))
+            m_p    = float(m_poly(res_r['h2o_mol']))
             vals   = [round(res_r['h2o_wt'],2), round(res_r['h2o_mol'],3),
                       round(res_r['Tg'],2),      round(res_r['Tg']-273.15,2),
                       round(Tg_f,2),             round(Tg_f-273.15,2),
@@ -863,7 +954,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         make_visc_sheet_hydrous(wb2,'Visc_m_Eq12',
             results, lambda x: m_from_tg(tg_func(x), Tg_d, m_d), tg_func, '7B1FA2')
         make_visc_sheet_hydrous(wb2,'Visc_m_poly',
-            results, lambda x: float(np.polyval(m_poly,x)), tg_func, 'BF360C')
+            results, lambda x: float(m_poly(x)), tg_func, 'BF360C')
 
         buf_excel = io.BytesIO(); wb2.save(buf_excel); buf_excel.seek(0)
         buf_fig2  = io.BytesIO(); fig2.savefig(buf_fig2,format='png',dpi=200,bbox_inches='tight')
@@ -874,11 +965,14 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         st.session_state['hyd_fig']      = fig2
         st.session_state['hyd_buf_excel']= buf_excel
         st.session_state['hyd_buf_fig']  = buf_fig2
+        # Store poly params to reconstruct m_poly after page reload
+        _poly_params = {'m_inf': _m_inf, 'k': _k}
         st.session_state['hyd_meta']     = {
             'sname':sname, 'Tg_d':Tg_d, 'm_d':m_d,
             'b':b_fit, 'c':c_fit, 'd':d_fit,
             'tg_rmse':tg_rmse, 'poly_deg':poly_deg,
-            'm_poly':m_poly.tolist(),
+            'poly_params': _poly_params,
+            'poly_label': poly_label,
         }
 
     # ── Show results ──────────────────────────────────────────────────────────
@@ -886,6 +980,8 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         meta = st.session_state['hyd_meta']
 
         st.subheader("📈 Results")
+        if st.session_state.get('non_mono'):
+            st.warning("⚠️ Non-monotone m detected in ANN data. Polynomial fit uses only the monotone decreasing portion. See Langhammer et al. (2021).")
         st.markdown(f"""
 **Tg_dry** = {meta['Tg_d']-273.15:.1f} °C &nbsp;|&nbsp;
 **m_dry** = {meta['m_d']:.2f} &nbsp;|&nbsp;
@@ -894,58 +990,319 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         """)
         st.pyplot(st.session_state['hyd_fig'])
 
-        st.subheader("🔬 Model descriptions")
-        st.markdown("""
-#### Panel 1 — Glass transition temperature Tg(H₂O)
-Tg decreases with increasing water content because H₂O acts as a network modifier,
-depolymerising the melt structure and reducing structural relaxation temperatures.
-The fitted curve uses the **Schneider et al. (1997)** two-component model
-(implemented in Langhammer et al. 2021, Eq. 9-10):
+        # ── Individual panel downloads ─────────────────────────────────────────
+        st.subheader("📥 Download individual panels")
+        results_ss   = st.session_state['hyd_results']
+        meta_ss      = st.session_state['hyd_meta']
+        Tg_d_ss      = meta_ss['Tg_d']
+        m_d_ss       = meta_ss['m_d']
+        b_ss         = meta_ss['b']
+        c_ss         = meta_ss['c']
+        d_ss         = meta_ss['d']
+        poly_deg_ss  = meta_ss['poly_deg']
+        _pp    = meta_ss['poly_params']
+        _mi_ss = _pp['m_inf']
+        _k_ss  = _pp['k']
+        _md_ss = meta_ss['m_d']
+        m_poly_ss = lambda x, mi=_mi_ss, k=_k_ss, md=_md_ss: mi + (md - mi)*np.exp(-k*x)
+        sname_ss     = meta_ss['sname']
+        x_mol_arr_ss = np.array([r['h2o_mol'] for r in results_ss])
+        Tg_arr_ss    = np.array([r['Tg']      for r in results_ss])
+        m_arr_ss     = np.array([r['m']       for r in results_ss])
+        x_smooth_ss  = np.linspace(0, max(x_mol_arr_ss)*1.05, 200)
+        Tg_smooth_ss = np.array([tg_model(x, b_ss, c_ss, d_ss, Tg_d_ss) for x in x_smooth_ss])
+        m_eq12_sm_ss = np.array([m_from_tg(Tg, Tg_d_ss, m_d_ss) for Tg in Tg_smooth_ss])
+        m_poly_sm_ss = np.array([m_poly_ss(x) for x in x_smooth_ss])
+        colors_ss    = cm.plasma(np.linspace(0.1, 0.9, len(results_ss)))
 
-> Tg(x) = w₁·Tg_H₂O + w₂·Tg_d + c·w₁·w₂·(Tg_d − Tg_H₂O) + d·w₁·w₂²·(Tg_d − Tg_H₂O)
+        tg_func_ss   = lambda x: tg_model(x, b_ss, c_ss, d_ss, Tg_d_ss)
+        m_eq12_func  = lambda x: m_from_tg(tg_func_ss(x), Tg_d_ss, m_d_ss)
+        m_poly_func  = lambda x: float(m_poly_ss(x))
+        m_const_func = lambda x: m_d_ss
 
-where w₁ and w₂ are mixing weights controlled by parameter b (Eq. 10),
-Tg_H₂O = 136 K (−137 °C), and b, c, d are fitted on the ANN-calculated Tg values.
+        def make_single_fig(panel_func, title):
+            fig_s, ax_s = plt.subplots(figsize=(7, 5))
+            fig_s.suptitle(f"{sname_ss} — {title}", fontsize=11, fontweight='bold')
+            panel_func(ax_s)
+            plt.tight_layout()
+            buf = io.BytesIO()
+            fig_s.savefig(buf, format='png', dpi=200, bbox_inches='tight')
+            buf.seek(0)
+            plt.close(fig_s)
+            return buf
 
----
+        def panel_tg(ax):
+            ax.scatter(x_mol_arr_ss, Tg_arr_ss-273.15, color='steelblue', s=60, zorder=5, label='ANN')
+            ax.plot(x_smooth_ss, Tg_smooth_ss-273.15, 'steelblue', linewidth=2,
+                    label='Eq.9-10 fit  b={:.3f}, c={:.3f}, d={:.3f}'.format(b_ss,c_ss,d_ss))
+            ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Tg (°C)')
+            ax.set_title('Glass transition temperature'); ax.legend(fontsize=8); ax.grid(True,linestyle='--',alpha=0.4)
 
-#### Panel 2 — Fragility index m(H₂O): three models
-The fragility index m quantifies how rapidly viscosity changes near Tg
-(m = 12 for a perfectly Arrhenian melt; larger m = more non-Arrhenian behaviour).
-Three approaches are compared:
+        def panel_m(ax):
+            _mono_mask_ss = np.ones(len(m_arr_ss), dtype=bool)
+            _m_min_ss = m_arr_ss[0]
+            for _ii in range(1, len(m_arr_ss)):
+                if m_arr_ss[_ii] < _m_min_ss: _m_min_ss = m_arr_ss[_ii]
+                else: _mono_mask_ss[_ii:] = False; break
+            ax.scatter(x_mol_arr_ss[_mono_mask_ss], m_arr_ss[_mono_mask_ss],
+                       color='tomato', s=60, zorder=5, label='ANN (used for fit)')
+            if not np.all(_mono_mask_ss):
+                ax.scatter(x_mol_arr_ss[~_mono_mask_ss], m_arr_ss[~_mono_mask_ss],
+                           color='lightgray', s=60, marker='x', linewidths=2,
+                           zorder=5, label='ANN (excluded)')
+            ax.plot(x_smooth_ss, m_eq12_sm_ss, 'tomato', linewidth=2, linestyle='--', label='Eq. 12')
+            ax.plot(x_smooth_ss, m_poly_sm_ss, 'darkorange', linewidth=2, label='Poly deg-{}'.format(poly_deg_ss))
+            ax.axhline(m_d_ss, color='steelblue', linewidth=2, linestyle=':', label='m constant = {:.2f}'.format(m_d_ss))
+            ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Fragility index m')
+            ax.set_title('Fragility index'); ax.legend(fontsize=8); ax.grid(True,linestyle='--',alpha=0.4)
 
-| Model | Description |
-|---|---|
-| **m constant** | m is fixed at the anhydrous value m_dry. Simplest assumption — water only affects Tg. |
-| **m from Eq. 12** | m is derived analytically from the fitted Tg(H₂O) curve using Eq. 12 of Langhammer et al. (2021): m(x) = m_d + (12 − A) · ln(Tg(x) / Tg_d). Physically motivated — m follows from Tg with no additional free parameters. |
-| **m polynomial** | m is fitted directly on the ANN-calculated m values using a polynomial (degree 1 or 2). Purely data-driven — captures whatever the ANN computes, without physical constraints. |
+        def panel_visc(ax, m_func, title):
+            for i, r in enumerate(results_ss):
+                Tg_f = tg_func_ss(r['h2o_mol'])
+                m_v  = m_func(r['h2o_mol'])
+                try: T_max = brentq(myega_eq, Tg_f, 5000.0, args=(Tg_f, m_v))
+                except: T_max = 3000.0
+                T_arr2 = np.arange(Tg_f, T_max+50, 25)
+                ax.plot(T_arr2-273.15, myega_eq(T_arr2,Tg_f,m_v), color=colors_ss[i],
+                        linewidth=2, label='{:.1f} wt%'.format(r['h2o_wt']))
+            ax.set_xlabel('Temperature (°C)'); ax.set_ylabel('log₁₀(η / Pa·s)')
+            ax.set_title(title); ax.legend(fontsize=7,loc='upper right'); ax.grid(True,linestyle='--',alpha=0.4)
 
----
+        col_dl = st.columns(5)
+        panels = [
+            ("Tg_vs_H2O",      "Tg vs H₂O",             panel_tg,  None),
+            ("m_vs_H2O",       "m vs H₂O",               panel_m,   None),
+            ("Visc_m_constant","Visc — m constant",       None,      m_const_func),
+            ("Visc_m_Eq12",    "Visc — m Eq.12",          None,      m_eq12_func),
+            ("Visc_m_poly",    "Visc — m poly",           None,      m_poly_func),
+        ]
+        for col, (fname, label, pf, mf) in zip(col_dl, panels):
+            if pf is not None:
+                buf_s = make_single_fig(pf, label)
+            else:
+                buf_s = make_single_fig(lambda ax, mf=mf, label=label: panel_visc(ax, mf, label), label)
+            with col:
+                st.download_button(f"⬇️ {label}", data=buf_s,
+                    file_name=f"{sname_ss}_{fname}.png", mime="image/png",
+                    key=f"dl_{fname}")
 
-#### Panels 3-5 — Viscosity curves
-MYEGA viscosity curves (Mauro et al. 2009, Eq. 7) calculated using the **fitted Tg(H₂O)**
-and each of the three m models above. The ♦ marker indicates the Tg point on each curve.
-Comparing the three panels shows the sensitivity of predicted viscosity to the choice of
-fragility model — particularly important at low temperatures near Tg.
-
----
-
-#### References
-- Langhammer D., Di Genova D., Steinle-Neumann G. (2022). *Modeling viscosity of volcanic melts with ANN.* GGG, 23, e2022GC010673. https://doi.org/10.1029/2022GC010673
-- Langhammer D., Di Genova D., Steinle-Neumann G. (2021). *Modeling the viscosity of anhydrous and hydrous volcanic melts.* GGG, 22, e2021GC009918. https://doi.org/10.1029/2021GC009918
-- Mauro J.C. et al. (2009). *Viscosity of glass-forming liquids.* PNAS, 106, 19780–19784. https://doi.org/10.1073/pnas.0911705106
-- Schneider H.A. et al. (1997). *The glass transition temperature of random copolymers.* Polymer, 38, 1323–1337. https://www.sciencedirect.com/science/article/pii/S0032386196006520
-        """)
-
-        st.subheader("📥 Download results")
-        c1, c2 = st.columns(2)
-        with c1:
+        # ── Viscosity vs H2O at fixed T ───────────────────────────────────────
+        st.divider()
+        st.subheader("📥 Download all results")
+        c1_main, c2_main = st.columns(2)
+        with c1_main:
             st.download_button("⬇️ Download Excel (all models)",
                 data=st.session_state['hyd_buf_excel'],
-                file_name=f"hydrous_visc_{meta['sname']}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        with c2:
-            st.download_button("⬇️ Download Plot (PNG)",
+                file_name="hydrous_visc_{}.xlsx".format(meta['sname']),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_excel_main")
+        with c2_main:
+            st.download_button("⬇️ Download combined plot (PNG)",
                 data=st.session_state['hyd_buf_fig'],
-                file_name=f"hydrous_visc_{meta['sname']}.png",
-                mime="image/png")
+                file_name="hydrous_visc_{}.png".format(meta['sname']),
+                mime="image/png", key="dl_fig_main")
+
+        st.divider()
+        st.subheader("🌡️ Viscosity vs H₂O at a fixed temperature")
+        st.markdown("""
+Do you want to simulate how viscosity changes with decreasing water content
+at a fixed temperature? This generates three plots — one per fragility model —
+showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temperature you choose.
+        """)
+
+        do_visc_vs_h2o = st.checkbox("Yes, calculate viscosity vs H₂O at fixed T")
+
+        if do_visc_vs_h2o:
+            col_t1, col_t2, col_t3 = st.columns(3)
+            with col_t1:
+                T_fixed_C = st.number_input("Temperature (°C):", min_value=200.0,
+                                            max_value=2000.0, value=1200.0, step=50.0)
+            with col_t2:
+                h2o_min = st.number_input("H₂O min (wt%):", min_value=0.0,
+                                          max_value=10.0, value=0.0, step=0.1)
+            with col_t3:
+                h2o_max = st.number_input("H₂O max (wt%):", min_value=0.1,
+                                          max_value=15.0, value=5.0, step=0.1)
+
+            n_points = st.slider("Number of H₂O points:", min_value=5, max_value=50, value=20)
+
+            if st.button("▶️ Calculate viscosity vs H₂O", key="btn_visc_h2o"):
+                T_fixed_K = T_fixed_C + 273.15
+                h2o_range = np.linspace(h2o_min, h2o_max, n_points)
+
+                # Convert wt% to mol% using fitted Tg curve range
+                wt_dry = st.session_state.get('wt_dry')
+                h2o_mol_range = np.array([wt_to_mol_h2o(h, wt_dry) for h in h2o_range])
+
+                # Calculate viscosity for each m model at each H2O content
+                visc_const, visc_eq12, visc_poly = [], [], []
+                for h2o_mol in h2o_mol_range:
+                    Tg_f = tg_func_ss(h2o_mol)
+                    for visc_list, m_func in [
+                        (visc_const, m_const_func),
+                        (visc_eq12,  m_eq12_func),
+                        (visc_poly,  m_poly_func),
+                    ]:
+                        m_v = m_func(h2o_mol)
+                        try:
+                            v = float(myega_eq(T_fixed_K, Tg_f, m_v))
+                            if not np.isfinite(v): v = np.nan
+                        except: v = np.nan
+                        visc_list.append(v)
+
+                st.session_state['visc_h2o'] = {
+                    'h2o_wt': h2o_range,
+                    'h2o_mol': h2o_mol_range,
+                    'visc_const': visc_const,
+                    'visc_eq12':  visc_eq12,
+                    'visc_poly':  visc_poly,
+                    'T_fixed_C':  T_fixed_C,
+                    'sname':      sname_ss,
+                    'poly_deg':   poly_deg_ss,
+                }
+
+        if st.session_state.get('visc_h2o'):
+            vh = st.session_state['visc_h2o']
+            h2o_wt   = vh['h2o_wt']
+            h2o_mol  = vh['h2o_mol']
+            T_label  = vh['T_fixed_C']
+            sname_v  = vh['sname']
+            pd_v     = vh['poly_deg']
+
+            model_specs = [
+                ('m_constant', f'm = constant = {m_d_ss:.2f}',     vh['visc_const'], 'steelblue'),
+                ('m_Eq12',     'm from Eq. 12',                      vh['visc_eq12'],  'tomato'),
+                (f'm_poly_deg{pd_v}', f'm poly deg-{pd_v} (ANN)',   vh['visc_poly'],  'darkorange'),
+            ]
+
+            st.markdown("**Results at T = {:.0f} °C**".format(T_label))
+
+            from scipy.interpolate import PchipInterpolator
+
+            def _smooth_fit(x_arr, y_arr, n=300):
+                """Monotone cubic spline (PCHIP) — passes exactly through all data points."""
+                valid = np.isfinite(y_arr)
+                if valid.sum() < 2: return x_arr[valid], y_arr[valid]
+                interp = PchipInterpolator(x_arr[valid], y_arr[valid])
+                x_sm = np.linspace(x_arr[valid][0], x_arr[valid][-1], n)
+                return x_sm, interp(x_sm)
+
+            cols_vh = st.columns(3)
+            bufs_vh = []
+            for col, (mkey, mlabel, visc_vals, mcolor) in zip(cols_vh, model_specs):
+                varr = np.array(visc_vals, dtype=float)
+                x_sm, y_sm = _smooth_fit(h2o_wt, varr)
+                fig_vh, ax_vh = plt.subplots(figsize=(6, 5))
+                ax_vh.plot(x_sm, y_sm, color=mcolor, linewidth=2.5)
+                ax_vh.scatter(h2o_wt[np.isfinite(varr)], varr[np.isfinite(varr)],
+                              color=mcolor, s=40, zorder=5)
+                ax_vh.set_xlabel("H$_2$O (wt%)", fontsize=12)
+                ax_vh.set_ylabel(r'log$_{10}$($\eta$ / Pa$\cdot$s)', fontsize=12)
+                ax_vh.set_title("{} - T = {:.0f} C - {}".format(sname_v, T_label, mlabel),
+                                fontsize=10, fontweight="bold")
+                ax_vh.grid(True, linestyle="--", alpha=0.5)
+                plt.tight_layout()
+                with col: st.pyplot(fig_vh)
+                buf_vh_i = io.BytesIO()
+                fig_vh.savefig(buf_vh_i, format="png", dpi=200, bbox_inches="tight")
+                buf_vh_i.seek(0)
+                bufs_vh.append((mkey, buf_vh_i))
+                plt.close(fig_vh)
+
+            # Combined figure
+            fig_comb, axes_comb = plt.subplots(1, 3, figsize=(18, 5))
+            fig_comb.suptitle("{} - Viscosity vs H2O at T = {:.0f} C".format(sname_v, T_label),
+                              fontsize=13, fontweight="bold")
+            for ax_c, (mkey, mlabel, visc_vals, mcolor) in zip(axes_comb, model_specs):
+                varr = np.array(visc_vals, dtype=float)
+                x_sm, y_sm = _smooth_fit(h2o_wt, varr)
+                ax_c.plot(x_sm, y_sm, color=mcolor, linewidth=2.5)
+                ax_c.scatter(h2o_wt[np.isfinite(varr)], varr[np.isfinite(varr)],
+                             color=mcolor, s=40, zorder=5)
+                ax_c.set_xlabel("H$_2$O (wt%)", fontsize=11)
+                ax_c.set_ylabel(r'log$_{10}$($\eta$ / Pa$\cdot$s)', fontsize=11)
+                ax_c.set_title(mlabel, fontsize=11)
+                ax_c.grid(True, linestyle="--", alpha=0.5)
+            plt.tight_layout()
+            buf_comb = io.BytesIO()
+            fig_comb.savefig(buf_comb, format="png", dpi=200, bbox_inches="tight")
+            buf_comb.seek(0)
+            plt.close(fig_comb)
+
+            # Excel with raw data
+            wb_vh = Workbook()
+            ws_vh = wb_vh.active; ws_vh.title = "Visc_vs_H2O"
+            vh_headers = ["H2O (wt%)", "H2O (mol%)",
+                          "log10_visc_m_constant", "log10_visc_m_Eq12", "log10_visc_m_poly"]
+            thin_vh = Side(style="thin", color="AAAAAA")
+            brd_vh  = Border(left=thin_vh, right=thin_vh, top=thin_vh, bottom=thin_vh)
+            ctr_vh  = Alignment(horizontal="center", vertical="center")
+            for c, h in enumerate(vh_headers, 1):
+                cell = ws_vh.cell(row=1, column=c, value=h)
+                cell.font  = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+                cell.fill  = PatternFill("solid", start_color="1F4E79")
+                cell.alignment = Alignment(horizontal="center",vertical="center",wrap_text=True)
+                cell.border = brd_vh
+                ws_vh.column_dimensions[get_column_letter(c)].width = max(len(h),8)+3
+            ws_vh.row_dimensions[1].height = 28
+            alt_vh = PatternFill("solid", start_color="D6E4F0")
+            wht_vh = PatternFill("solid", start_color="FFFFFF")
+            vc_arr  = vh["visc_const"]
+            veq_arr = vh["visc_eq12"]
+            vp_arr  = vh["visc_poly"]
+            for r,(hw,hm,vc,veq,vp) in enumerate(
+                    zip(h2o_wt, h2o_mol, vc_arr, veq_arr, vp_arr), 2):
+                fill_vh = alt_vh if r%2==0 else wht_vh
+                for c,val in enumerate([round(float(hw),3), round(float(hm),3),
+                                        round(float(vc),4), round(float(veq),4),
+                                        round(float(vp),4)], 1):
+                    cell = ws_vh.cell(row=r, column=c, value=val)
+                    cell.alignment=ctr_vh; cell.border=brd_vh
+                    cell.fill=fill_vh; cell.number_format="0.000"
+            ws_vh.freeze_panes = "A2"
+            buf_xl_vh = io.BytesIO(); wb_vh.save(buf_xl_vh); buf_xl_vh.seek(0)
+
+            # 4th plot: all three models together
+            fig_all, ax_all = plt.subplots(figsize=(7, 5))
+            fig_all.suptitle("{} - T = {:.0f} C - All models".format(sname_v, T_label),
+                             fontsize=11, fontweight="bold")
+            ls_list = ["-", "--", ":"]
+            for (mkey, mlabel, visc_vals, mcolor), ls in zip(model_specs, ls_list):
+                varr4 = np.array(visc_vals, dtype=float)
+                x_sm4, y_sm4 = _smooth_fit(h2o_wt, varr4)
+                ax_all.plot(x_sm4, y_sm4, color=mcolor, linewidth=2.5, linestyle=ls, label=mlabel)
+                ax_all.scatter(h2o_wt[np.isfinite(varr4)], varr4[np.isfinite(varr4)],
+                               color=mcolor, s=40, zorder=5)
+            ax_all.set_xlabel("H$_2$O (wt%)", fontsize=12)
+            ax_all.set_ylabel(r"log$_{10}$($\eta$ / Pa$\cdot$s)", fontsize=12)
+            ax_all.legend(fontsize=9); ax_all.grid(True, linestyle="--", alpha=0.5)
+            plt.tight_layout()
+            st.pyplot(fig_all)
+            buf_all = io.BytesIO()
+            fig_all.savefig(buf_all, format="png", dpi=200, bbox_inches="tight")
+            buf_all.seek(0); plt.close(fig_all)
+
+            st.subheader("Download viscosity vs H2O")
+            dl_cols = st.columns(5)
+            with dl_cols[0]:
+                st.download_button("Combined (PNG)", data=buf_comb,
+                    file_name="{}_visc_vs_H2O_T{:.0f}C_combined.png".format(sname_v, T_label),
+                    mime="image/png", key="dl_vh_combined")
+            for i,(mkey,buf_vh_i) in enumerate(bufs_vh):
+                with dl_cols[i+1]:
+                    st.download_button("{}".format(model_specs[i][1][:18]),
+                        data=buf_vh_i,
+                        file_name="{}_visc_vs_H2O_T{:.0f}C_{}.png".format(sname_v,T_label,mkey),
+                        mime="image/png", key="dl_vh_{}".format(mkey))
+            with dl_cols[4]:
+                st.download_button("Excel data",
+                    data=buf_xl_vh,
+                    file_name="{}_visc_vs_H2O_T{:.0f}C.xlsx".format(sname_v, T_label),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_vh_excel")
+            st.download_button("All models combined (PNG)",
+                data=buf_all,
+                file_name="{}_visc_vs_H2O_T{:.0f}C_all_models.png".format(sname_v, T_label),
+                mime="image/png", key="dl_vh_all_models")
+
+
