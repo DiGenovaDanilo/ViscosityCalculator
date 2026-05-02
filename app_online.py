@@ -256,7 +256,7 @@ def make_visc_sheet_hydrous(wb, sheet_name, results, m_func, tg_model_func, hdr_
 for key in ['calc_done','all_curves','rows_recalc','tg_m_dict','skipped',
             'fig','df_input','rows_specific',
             'hyd_done','hyd_results','hyd_fig','hyd_buf_excel',
-            'hyd_buf_fig','hyd_meta','visc_h2o','wt_dry','non_mono']:
+            'hyd_buf_fig','hyd_meta','visc_h2o','wt_dry','non_mono','df_h_selected']:
     if key not in st.session_state:
         st.session_state[key] = None
 if st.session_state['calc_done'] is None:
@@ -904,26 +904,25 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                     _clicked_name = _all_samples[_sample_idx]
                     if _clicked_name != _current_sel:
                         st.session_state['hyd_sample_select'] = _clicked_name
-                        st.rerun()
+                        _current_sel = _clicked_name
 
-
-
-            # Dropdown (always shown as backup)
+            # Dropdown — no key= so index= always reflects current selection
             selected_sample = st.selectbox(
                 "Or select from dropdown:",
                 options=_all_samples,
-                index=_all_samples.index(_current_sel),
-                key="hyd_sample_select_dd"
+                index=_all_samples.index(_current_sel)
             )
             if selected_sample != _current_sel:
                 st.session_state['hyd_sample_select'] = selected_sample
-                st.rerun()
+                _current_sel = selected_sample
 
             # Use current selection
             df_h = df_h[df_h["Sample"] == _current_sel].reset_index(drop=True)
+            st.session_state['df_h_selected'] = df_h.to_dict('records')
             st.success(f"✅ Selected: **{_current_sel}**")
         else:
             df_h = df_h.iloc[[0]]
+            st.session_state['df_h_selected'] = df_h.to_dict('records')
 
     else:  # Manual input
         st.markdown("**Enter your anhydrous composition in wt% (H₂O = 0):**")
@@ -947,6 +946,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         total = sum(manual_vals[o] for o in OXIDES_NO_H2O)
         st.caption(f"Sum of oxides (anhydrous): **{total:.2f} wt%** — will be normalised to 100%")
         df_h = pd.DataFrame([{"Sample": sample_name_manual, **manual_vals}])
+        st.session_state['df_h_selected'] = df_h.to_dict('records')
         st.success(f"✅ Composition ready: **{df_h['Sample'].values[0]}**")
         with st.expander("Preview composition"): st.dataframe(df_h)
 
@@ -964,6 +964,10 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
     except ValueError:
         st.error("Invalid H₂O input. Use numbers separated by commas.")
         st.stop()
+
+    # Restore df_h from session state in case of button-click rerun
+    if st.session_state.get('df_h_selected') and (df_h is None or len(df_h) == 0):
+        df_h = pd.DataFrame(st.session_state['df_h_selected'])
 
     if st.button("▶️ Run hydrous modelling", type="primary"):
 
