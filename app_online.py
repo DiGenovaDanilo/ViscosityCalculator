@@ -56,6 +56,27 @@ TEMPLATE_CSV = (
     "4,46.1,2.3,13.0,11.2,0.4,11.6,11.13,2.4,1.1,0.6,0,0,0,Unknown\n"
 )
 
+DEFAULT_EXAMPLE_CSV = """Sample,SiO2,TiO2,Al2O3,FeO,MnO,MgO,CaO,Na2O,K2O,P2O5,Cr2O3,Fe2O3,H2O,Reference
+JSC-1a,46.6,1.79,16.37,3.79,0.18,8.79,9.96,3.27,0.83,0.71,0.02,7.68,0,"Morrison et al., 2019"
+P-MORB,51.0,2.8,14.07,5.98,0.22,5.67,10.47,2.69,0.44,0.0,0.01,6.64,0,"Hofmeister et al., 2016"
+NYI-1977,39.57,2.89,14.88,3.76,0.3,4.13,12.16,5.47,5.14,1.47,0.0,10.25,0,"Morrison et al., 2020"
+CHW,53.24,1.7,15.75,6.84,0.17,6.43,9.08,2.56,0.68,0.12,0.02,3.41,0,"Sehlke & Whittington, 2016"
+Andesite (M. Pelée),62.47,0.55,20.03,0.03,0.02,3.22,9.09,3.52,0.93,0.12,0.0,0.0,0,"Richet et al., 1996"
+Qtz-latite,67.93,0.95,13.15,3.12,0.1,1.24,2.56,2.69,4.51,0.29,0.0,3.47,0,"Ciocchiatti et al., 1995"
+LM,42.27,9.56,8.65,5.67,0.1,5.73,12.71,0.34,0.18,0.06,0.01,14.71,0,"Sehlke & Whittington, 2016"
+WPVe,56.4,0.3,21.66,1.15,0.13,0.41,3.28,5.34,9.56,0.0,0.0,1.77,0,"Kleest et al., 2020"
+Ebu-B,75.32,0.0,8.27,0.93,0.0,0.01,0.25,6.83,3.66,0.0,0.0,4.72,0,"Stabile et al., 2016"
+Bas1-DSC,48.82,1.67,16.96,5.03,0.24,5.53,10.15,3.71,1.85,0.01,0.47,5.58,0,"Langhammer et al., 2021"
+NVP-Na,55.78,0.9,15.09,0.96,0.25,13.78,4.35,6.34,0.22,0.01,0.18,2.13,0,"Sehlke & Whittington, 2015"
+Vul,53.6,0.03,15.52,4.21,0.16,4.89,8.53,3.67,4.73,0.0,0.0,4.67,0,"Vetere et al., 2007"
+Lat-DSC,56.65,0.81,17.95,3.3,0.17,2.36,5.53,4.56,4.54,0.01,0.45,3.66,0,"Langhammer et al., 2021"
+AMS_B1,61.27,0.38,18.38,3.5,0.14,0.74,2.97,4.58,8.04,0.0,0.0,0.0,0,"Romano et al., 2003"
+PS-GM,69.23,0.5,9.18,3.71,0.32,0.08,0.6,6.52,4.35,0.04,0.0,5.46,0,"Di Genova et al., 2013"
+BasDF,43.47,3.87,14.9,6.61,0.2,6.01,10.44,4.36,1.79,1.02,0.0,7.33,0,"Di Fiore et al., 2022"
+Ves_G_tot,49.51,0.84,16.5,3.62,0.13,5.13,10.26,2.72,6.54,0.72,0.0,4.02,0,Giordano & Dingwell 2003a
+Ves_W_tot,51.78,0.68,18.81,3.08,0.13,2.53,7.38,3.79,7.99,0.4,0.0,3.42,0,Giordano & Dingwell 2003a
+"""
+
 # ==============================================================================
 # SHARED FUNCTIONS
 # ==============================================================================
@@ -323,10 +344,10 @@ if mode == "🔷 Viscosity Calculator":
             _default_csv = pathlib.Path(BASE_DIR) / "Example_compositions.csv"
             if _default_csv.exists():
                 df = pd.read_csv(_default_csv).dropna(how='all').reset_index(drop=True)
-                st.info("📋 Using bundled **Example_compositions.csv** — upload your own file to replace it.")
             else:
-                st.info("👆 Upload a CSV file to get started.")
-                st.stop()
+                import io as _sio
+                df = pd.read_csv(_sio.StringIO(DEFAULT_EXAMPLE_CSV)).dropna(how='all').reset_index(drop=True)
+            st.info("📋 Using bundled **Example_compositions.csv** — upload your own CSV file above to replace it.")
         else:
             df = pd.read_csv(uploaded).dropna(how='all').reset_index(drop=True)
         for ox in OXIDES:
@@ -756,10 +777,10 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             _default_csv_h = pathlib.Path(BASE_DIR) / "Example_compositions.csv"
             if _default_csv_h.exists():
                 df_h = pd.read_csv(_default_csv_h).dropna(how='all').reset_index(drop=True)
-                st.info("📋 Using bundled **Example_compositions.csv** — upload your own file to replace it.")
             else:
-                st.info("👆 Upload a CSV file with one anhydrous composition.")
-                st.stop()
+                import io as _sio
+                df_h = pd.read_csv(_sio.StringIO(DEFAULT_EXAMPLE_CSV)).dropna(how='all').reset_index(drop=True)
+            st.info("📋 Using bundled **Example_compositions.csv** — upload your own CSV file above to replace it.")
         else:
             df_h = pd.read_csv(uploaded_h).dropna(how='all').reset_index(drop=True)
         for ox in OXIDES:
@@ -1049,15 +1070,6 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
 
         # Save to session state and warn if non-monotone behaviour detected
         st.session_state['non_mono'] = non_mono_detected
-        if non_mono_detected:
-            n_valid   = int(mono_mask.sum())
-            x_cutoff  = float(x_mol_arr[mono_mask][-1])
-            st.warning(
-                f"⚠️ **Non-monotone m detected**: the ANN shows m increasing beyond "
-                f"{x_cutoff:.1f} mol% H₂O, which is physically unreasonable. "
-                f"The polynomial fit uses only the first **{n_valid} monotone points** "
-                f"(up to {x_cutoff:.1f} mol%). See Langhammer et al. (2021) for discussion."
-            )
 
         # Smooth curves
         x_smooth   = np.linspace(0, max(x_mol_arr)*1.05, 200)
@@ -1289,14 +1301,14 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         meta = st.session_state['hyd_meta']
 
         st.subheader("📈 Results")
-        if st.session_state.get('non_mono'):
-            st.warning("⚠️ Non-monotone m detected in ANN data. Polynomial fit uses only the monotone decreasing portion. See Langhammer et al. (2021).")
         st.markdown(f"""
 **Tg_dry** = {meta['Tg_d']-273.15:.1f} °C &nbsp;|&nbsp;
 **m_dry** = {meta['m_d']:.2f} &nbsp;|&nbsp;
 **Tg fit:** b={meta['b']:.4f}, c={meta['c']:.4f}, d={meta['d']:.4f} &nbsp;|&nbsp;
 **RMSE** = {meta['tg_rmse']:.2f} K
         """)
+        if st.session_state.get('non_mono'):
+            st.warning("⚠️ **Non-monotone m detected**: the ANN shows m increasing at high H₂O content (physically unreasonable). The **exponential saturation fit** uses only the monotone decreasing portion. See Langhammer et al. (2021).")
         st.pyplot(st.session_state['hyd_fig'])
 
         # ── Individual panel downloads ─────────────────────────────────────────
