@@ -5,13 +5,14 @@ Langhammer et al. (2022) ANN model — two modes:
   2. Anhydrous and Hydrous Modelling (Tg, m and viscosity vs H2O)
 """
 
-import sys, os, io
+import sys, os, io, pathlib
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import matplotlib.patheffects as pe
 from scipy.optimize import brentq, minimize
 import streamlit as st
 import tensorflow as tf
@@ -307,20 +308,58 @@ if mode == "🔷 Viscosity Calculator":
     st.title("🔷 Viscosity Calculator")
     st.markdown("Calculate silicate melt viscosity from composition using the **Langhammer et al. (2022)** ANN model. Upload a CSV with multiple samples and download MYEGA curves.")
 
-    st.download_button("📄 Download CSV template", data=TEMPLATE_CSV,
-                       file_name="Example_compositions.csv", mime="text/csv")
+    input_method_1 = st.radio("**How do you want to provide the composition?**",
+                              ["📂 Upload CSV file", "⌨️ Type composition manually"],
+                              horizontal=True, key="mode1_input_method")
 
-    uploaded = st.file_uploader("Upload your CSV file", type=["csv"])
-    if uploaded is None:
-        st.info("👆 Upload a CSV file to get started.")
-        st.stop()
+    df = None
 
-    df = pd.read_csv(uploaded).dropna(how='all').reset_index(drop=True)
-    for ox in OXIDES:
-        if ox not in df.columns: df[ox] = 0.0
-    df[OXIDES] = df[OXIDES].fillna(0.0)
-    st.success(f"✅ File loaded: **{len(df)} samples** found.")
-    with st.expander("Preview input data"): st.dataframe(df)
+    if input_method_1 == "📂 Upload CSV file":
+        st.download_button("📄 Download CSV template", data=TEMPLATE_CSV,
+                           file_name="Example_compositions.csv", mime="text/csv")
+        uploaded = st.file_uploader("Upload your CSV file", type=["csv"])
+        if uploaded is None:
+            # Default: load bundled Example_compositions.csv
+            _default_csv = pathlib.Path(BASE_DIR) / "Example_compositions.csv"
+            if _default_csv.exists():
+                df = pd.read_csv(_default_csv).dropna(how='all').reset_index(drop=True)
+                st.info("📋 Using bundled **Example_compositions.csv** — upload your own file to replace it.")
+            else:
+                st.info("👆 Upload a CSV file to get started.")
+                st.stop()
+        else:
+            df = pd.read_csv(uploaded).dropna(how='all').reset_index(drop=True)
+        for ox in OXIDES:
+            if ox not in df.columns: df[ox] = 0.0
+        df[OXIDES] = df[OXIDES].fillna(0.0)
+        st.success(f"✅ File loaded: **{len(df)} samples** found.")
+        with st.expander("Preview input data"): st.dataframe(df)
+
+    else:  # Manual input
+        st.markdown("**Enter your composition in wt% (one sample):**")
+        m1_name = st.text_input("Sample name:", value="My_sample", key="m1_sname")
+        OXIDES_NO_H2O = [o for o in OXIDES if o != "H2O"]
+        cols_m1 = st.columns(4)
+        defaults_m1 = {
+            "SiO2": 48.05, "TiO2": 0.76, "Al2O3": 17.69, "FeO": 6.08,
+            "MnO": 0.14, "MgO": 3.32, "CaO": 9.31, "Na2O": 3.45,
+            "K2O": 7.55, "P2O5": 0.46, "Cr2O3": 0.0, "Fe2O3": 0.0,
+        }
+        manual_vals_m1 = {}
+        for i, ox in enumerate(OXIDES_NO_H2O):
+            with cols_m1[i % 4]:
+                manual_vals_m1[ox] = st.number_input(
+                    ox, min_value=0.0, max_value=100.0,
+                    value=float(defaults_m1.get(ox, 0.0)),
+                    step=0.01, format="%.3f", key=f"m1_manual_{ox}")
+        manual_vals_m1["H2O"] = st.number_input(
+            "H2O", min_value=0.0, max_value=20.0, value=0.0,
+            step=0.01, format="%.3f", key="m1_manual_H2O")
+        total_m1 = sum(manual_vals_m1[o] for o in OXIDES)
+        st.caption(f"Sum of oxides: **{total_m1:.2f} wt%** — will be normalised to 100%")
+        df = pd.DataFrame([{"Sample": m1_name, **manual_vals_m1}])
+        st.success(f"✅ Composition ready: **{m1_name}**")
+        with st.expander("Preview composition"): st.dataframe(df)
 
     if st.button("▶️ Calculate viscosity", type="primary"):
         model = load_model()
@@ -388,36 +427,178 @@ if mode == "🔷 Viscosity Calculator":
         st.subheader("📈 Viscosity curves")
         st.pyplot(fig)
 
-        st.subheader("🌡️ Viscosity at specific temperatures (optional)")
-        do_specific=st.checkbox("Calculate viscosity at specific temperatures?")
-        rows_specific=st.session_state.get('rows_specific',[]) or []
+        # ── TAS diagram ──────────────────────────────────────────────────────────
+        st.subheader("🗺️ TAS diagram with viscosity colormap")
 
-        if do_specific:
-            sample_names=list(tg_m_dict.keys())
-            selected=st.multiselect("Select samples:",sample_names,default=sample_names)
-            if selected:
-                st.markdown("**Enter temperatures (°C) for each sample:**")
-                temps_per_sample={}
-                for sname in selected:
-                    t_input=st.text_input(f"Temperatures for **{sname}** (comma-separated):",
-                                          placeholder="e.g. 800, 1000, 1200, 1400",
-                                          key=f"temps_{sname}")
-                    temps_per_sample[sname]=t_input
-                if st.button("✅ Compute specific temperatures"):
-                    rows_specific=[]
-                    for sname,t_input in temps_per_sample.items():
-                        if not t_input.strip(): continue
-                        try:
-                            temps=[float(t.strip()) for t in t_input.split(',') if t.strip()]
-                            Tg,m=tg_m_dict[sname]
-                            for tc in sorted(temps):
-                                rows_specific.append({'Sample':sname,'T_C':round(tc,2),
-                                    'T_K':round(tc+273.15,2),'log10_visc':round(float(myega_eq(tc+273.15,Tg,m)),4)})
-                        except ValueError:
-                            st.error(f"Invalid temperatures for {sname}.")
-                    st.session_state['rows_specific']=rows_specific
-            if st.session_state.get('rows_specific'):
-                st.dataframe(pd.DataFrame(st.session_state['rows_specific']))
+        tg_m_dict_tas  = st.session_state.get('tg_m_dict')
+        df_input_tas   = st.session_state.get('df_input')
+
+        if tg_m_dict_tas and df_input_tas is not None:
+            tg_m_dict = tg_m_dict_tas
+            df_input  = df_input_tas
+
+            # ── Sub-classification: Na2O-K2O criterion (Le Maitre 2002) ───────
+            # For fields S1, S2, S3 (Trachy-basalt, Bas.Trachy-andesite, Trachy-andesite)
+            # Na2O - 2 >= K2O → sodic series; Na2O - 2 < K2O → potassic series
+            SUBCLASS_MAP = {
+                'S1': ('Hawaiite',              'Potassic trachybasalt'),
+                'S2': ('Mugearite',             'Shoshonite'),
+                'S3': ('Benmoreite',            'Latite'),
+            }
+
+            import warnings; warnings.filterwarnings('ignore')
+            from pyrolite.util.classification import TAS as TASclf
+            _tas_clf = TASclf()
+
+            # Build TAS data from input
+            tas_data = []
+            for _, row in df_input.iterrows():
+                sname = row['Sample']
+                if sname in tg_m_dict:
+                    Tg_s, m_s = tg_m_dict[sname]
+                    sio2  = float(row['SiO2'])
+                    na2o  = float(row['Na2O'])
+                    k2o   = float(row['K2O'])
+                    tas_v = na2o + k2o
+                    # Get TAS field ID
+                    try:
+                        _pred_df = pd.DataFrame({'SiO2': [sio2], 'Na2O + K2O': [tas_v]})
+                        field_id = str(_tas_clf.predict(_pred_df).iloc[0])
+                    except Exception:
+                        field_id = ''
+                    # Apply sub-classification
+                    if field_id in SUBCLASS_MAP:
+                        sodic, potassic = SUBCLASS_MAP[field_id]
+                        subclass = sodic if (na2o - 2) >= k2o else potassic
+                    else:
+                        subclass = ''
+                    tas_data.append({
+                        'Sample':   sname,
+                        'SiO2':     sio2,
+                        'TAS':      tas_v,
+                        'Na2O':     na2o,
+                        'K2O':      k2o,
+                        'Tg_C':     round(Tg_s - 273.15, 1),
+                        'm':        round(m_s, 2),
+                        'field_id': field_id,
+                        'subclass': subclass,
+                    })
+            df_tas = pd.DataFrame(tas_data)
+
+            tas_color = st.selectbox(
+                "Color samples by:",
+                ["Tg (°C)", "Fragility m", "log₁₀η at custom T (°C)"],
+                key="tas_color_sel")
+
+            if tas_color == "log₁₀η at custom T (°C)":
+                T_tas = st.number_input("Temperature for η (°C):",
+                                        min_value=500.0, max_value=1800.0,
+                                        value=1200.0, step=50.0, key="tas_T")
+                df_tas['color_val'] = [
+                    float(myega_eq(T_tas+273.15, tg_m_dict[r['Sample']][0],
+                                   tg_m_dict[r['Sample']][1]))
+                    for _, r in df_tas.iterrows()
+                ]
+                cbar_label = f'log₁₀(η / Pa·s) at {T_tas:.0f} °C'
+            elif tas_color == "Tg (°C)":
+                df_tas['color_val'] = df_tas['Tg_C']
+                cbar_label = 'Tg (°C)'
+            else:
+                df_tas['color_val'] = df_tas['m']
+                cbar_label = 'Fragility index m'
+
+            # ── Draw TAS diagram ──────────────────────────────────────────────────
+            fig_tas, ax_tas = plt.subplots(figsize=(10, 7))
+
+            # Use pyrolite for correct TAS (Middlemost 1994)
+            import warnings; warnings.filterwarnings('ignore')
+            from pyrolite.util.classification import TAS as TASclf
+            import matplotlib.patheffects as pe
+
+            tas_clf = TASclf()
+            tas_clf.add_to_axes(ax=ax_tas, add_labels=True,
+                                which_labels='volcanic',
+                                facecolor='#F0F0F0', edgecolor='#888888',
+                                linewidth=1.0, alpha=0.9)
+            for txt in ax_tas.texts:
+                txt.set_fontsize(7)
+                txt.set_color('#555555')
+                txt.set_path_effects([pe.withStroke(linewidth=2, foreground='white')])
+
+            # Scatter samples
+            sc = ax_tas.scatter(df_tas['SiO2'], df_tas['TAS'],
+                                c=df_tas['color_val'],
+                                cmap='plasma_r', s=120, zorder=5,
+                                edgecolors='black', linewidths=0.8)
+            plt.colorbar(sc, ax=ax_tas, label=cbar_label, shrink=0.8)
+
+            # Label samples (add sub-classification if available)
+            for _, row in df_tas.iterrows():
+                label = row['Sample']
+                if row.get('subclass', ''):
+                    label += f"\n({row['subclass']})"
+                ax_tas.annotate(label,
+                               xy=(row['SiO2'], row['TAS']),
+                               xytext=(4, 4), textcoords='offset points',
+                               fontsize=7, zorder=6, linespacing=1.3,
+                               path_effects=[pe.withStroke(linewidth=2,
+                                                           foreground='white')])
+
+            ax_tas.set_xlim(37, 80)
+            ax_tas.set_ylim(0, 17)
+            ax_tas.set_xlabel('SiO₂ (wt%)', fontsize=12)
+            ax_tas.set_ylabel('Na₂O + K₂O (wt%)', fontsize=12)
+            ax_tas.set_title('TAS diagram — ' + cbar_label, fontsize=12, fontweight='bold')
+            ax_tas.grid(True, linestyle='--', alpha=0.3, zorder=0)
+            plt.tight_layout()
+
+            st.pyplot(fig_tas)
+
+            buf_tas = io.BytesIO()
+            fig_tas.savefig(buf_tas, format='png', dpi=200, bbox_inches='tight')
+            buf_tas.seek(0)
+            plt.close(fig_tas)
+
+            st.download_button("⬇️ Download TAS plot (PNG)",
+                               data=buf_tas,
+                               file_name="TAS_diagram.png",
+                               mime="image/png",
+                               key="dl_tas")
+            st.caption("📖 TAS after Middlemost (1994), *Earth-Science Reviews* 37, 215-224. Fields from Le Bas et al. (1992), *Mineralogy and Petrology* 46, 1-22. Sub-classification (Hawaiite/Mugearite/Benmoreite vs Potassic trachybasalt/Shoshonite/Latite) from Le Maitre et al. (2002), *Igneous Rocks: A Classification and Glossary of Terms*. Implemented via [pyrolite](https://pyrolite.readthedocs.io/).")
+
+    st.subheader("🌡️ Viscosity at specific temperatures (optional)")
+    do_specific = st.checkbox("Calculate viscosity at specific temperatures?")
+    rows_specific = st.session_state.get('rows_specific', []) or []
+
+    if do_specific:
+        sample_names = list(tg_m_dict.keys())
+        selected = st.multiselect("Select samples:", sample_names, default=sample_names)
+        if selected:
+            st.markdown("**Enter temperatures (°C) for each sample:**")
+            temps_per_sample = {}
+            for sname in selected:
+                t_input = st.text_input(
+                    f"Temperatures for **{sname}** (comma-separated):",
+                    placeholder="e.g. 800, 1000, 1200, 1400",
+                    key=f"temps_{sname}")
+                temps_per_sample[sname] = t_input
+            if st.button("✅ Compute specific temperatures"):
+                rows_specific = []
+                for sname, t_input in temps_per_sample.items():
+                    if not t_input.strip(): continue
+                    try:
+                        temps = [float(t.strip()) for t in t_input.split(',') if t.strip()]
+                        Tg, m = tg_m_dict[sname]
+                        for tc in sorted(temps):
+                            rows_specific.append({
+                                'Sample': sname, 'T_C': round(tc, 2),
+                                'T_K': round(tc+273.15, 2),
+                                'log10_visc': round(float(myega_eq(tc+273.15, Tg, m)), 4)})
+                    except ValueError:
+                        st.error(f"Invalid temperatures for {sname}.")
+                st.session_state['rows_specific'] = rows_specific
+        if st.session_state.get('rows_specific'):
+            st.dataframe(pd.DataFrame(st.session_state['rows_specific']))
 
         # ── Build Excel ───────────────────────────────────────────────────────
         rows_specific=st.session_state.get('rows_specific',[]) or []
@@ -428,7 +609,7 @@ if mode == "🔷 Viscosity Calculator":
             ws2=wb.create_sheet('Viscosity_at_T')
             write_sheet(ws2,pd.DataFrame(rows_specific),hdr_color='4A235A')
 
-        # MYEGA_Calculator sheet
+            # MYEGA_Calculator sheet
         ws_calc=wb.create_sheet('MYEGA_Calculator')
         T_STEP_C=25; T_END_C=1600
         inp_fill=PatternFill('solid',start_color='FFF9C4')
@@ -474,21 +655,21 @@ if mode == "🔷 Viscosity Calculator":
                 formula=f"=-2.9+({tga}/{tka})*(12-(-2.9))*EXP(({ma}/(12-(-2.9))-1)*({tga}/{tka}-1))"
                 cv=ws_calc.cell(row=dr,column=cs+2,value=formula)
                 cv.border=brd_c; cv.alignment=ctr_c; cv.number_format='0.000'; cv.fill=fill
-            ws_calc.column_dimensions[get_column_letter(cs)].width=9
-            ws_calc.column_dimensions[get_column_letter(cs+1)].width=9
-            ws_calc.column_dimensions[get_column_letter(cs+2)].width=16
-            if s_idx<len(tg_m_dict)-1:
-                ws_calc.column_dimensions[get_column_letter(cs+BCOLS)].width=2
+                ws_calc.column_dimensions[get_column_letter(cs)].width=9
+                ws_calc.column_dimensions[get_column_letter(cs+1)].width=9
+                ws_calc.column_dimensions[get_column_letter(cs+2)].width=16
+                if s_idx<len(tg_m_dict)-1:
+                    ws_calc.column_dimensions[get_column_letter(cs+BCOLS)].width=2
         ws_calc.freeze_panes='A5'
 
-        # Chemistry sheet
+            # Chemistry sheet
         wb_chem=Workbook()
         ws_in=wb_chem.active; ws_in.title='Input_Chemistry'
         cols_orig=['Sample']+OXIDES
         if 'Reference' in df_input.columns: cols_orig.append('Reference')
         df_orig=df_input[cols_orig].copy()
         df_orig.insert(len(df_orig.columns)-(1 if 'Reference' in df_orig.columns else 0),
-                       'SUM_input',df_input[OXIDES].sum(axis=1).round(3))
+                   'SUM_input',df_input[OXIDES].sum(axis=1).round(3))
         write_sheet(ws_in,df_orig,hdr_color='1B5E20')
         ws_rc=wb_chem.create_sheet('Recalculated_Chemistry')
         cols_rec=['Sample']+OXIDES+['SUM','Fe_treatment']
@@ -516,9 +697,9 @@ if mode == "🔷 Viscosity Calculator":
         else:
             st.success(f"✅ All {len(df_input)} samples processed successfully!")
 
-# ==============================================================================
-# MODE 2 — ANHYDROUS AND HYDROUS MODELLING
-# ==============================================================================
+    # ==============================================================================
+    # MODE 2 — ANHYDROUS AND HYDROUS MODELLING
+    # ==============================================================================
 else:
 
     st.title("💧 Anhydrous and Hydrous Modelling")
@@ -557,24 +738,30 @@ Always verify that your composition falls within the training domain of the mode
 ### What the diamond markers mean
 The ♦ diamond on each viscosity curve marks the **glass transition temperature Tg**,
 defined as the temperature at which log₁₀(η) = 12 Pa·s.
-        """)
+    """)
 
     # ── Input method selector ─────────────────────────────────────────────────
     input_method = st.radio("**How do you want to provide the composition?**",
-                            ["📂 Upload CSV file", "⌨️ Type composition manually"],
-                            horizontal=True, key="hyd_input_method")
+                        ["📂 Upload CSV file", "⌨️ Type composition manually"],
+                        horizontal=True, key="hyd_input_method")
 
     df_h = None
 
     if input_method == "📂 Upload CSV file":
-        st.download_button("📄 Download CSV template (single composition)", data=TEMPLATE_CSV,
-                           file_name="Example_compositions.csv", mime="text/csv")
+        st.download_button("📄 Download CSV template", data=TEMPLATE_CSV,
+                       file_name="Example_compositions.csv", mime="text/csv")
         uploaded_h = st.file_uploader("Upload anhydrous composition CSV", type=["csv"],
-                                       key="hyd_upload")
+                                   key="hyd_upload")
         if uploaded_h is None:
-            st.info("👆 Upload a CSV file with one anhydrous composition.")
-            st.stop()
-        df_h = pd.read_csv(uploaded_h).dropna(how='all').reset_index(drop=True)
+            _default_csv_h = pathlib.Path(BASE_DIR) / "Example_compositions.csv"
+            if _default_csv_h.exists():
+                df_h = pd.read_csv(_default_csv_h).dropna(how='all').reset_index(drop=True)
+                st.info("📋 Using bundled **Example_compositions.csv** — upload your own file to replace it.")
+            else:
+                st.info("👆 Upload a CSV file with one anhydrous composition.")
+                st.stop()
+        else:
+            df_h = pd.read_csv(uploaded_h).dropna(how='all').reset_index(drop=True)
         for ox in OXIDES:
             if ox not in df_h.columns: df_h[ox] = 0.0
         df_h[OXIDES] = df_h[OXIDES].fillna(0.0)
@@ -582,42 +769,164 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             st.error("No valid rows found in the CSV.")
             st.stop()
         if len(df_h) > 1:
-            selected_sample = st.selectbox(
-                "Found {} compositions — select one to model:".format(len(df_h)),
-                options=df_h["Sample"].tolist(),
-                key="hyd_sample_select"
+            # ── TAS diagram for composition selection ─────────────────────────
+            st.markdown("**Select composition — click on a point in the TAS or use the dropdown:**")
+
+            import warnings; warnings.filterwarnings('ignore')
+            from pyrolite.util.classification import TAS as TASclf
+            import matplotlib.patheffects as _pe
+
+            # Iron redistribution + normalize for TAS plotting
+            df_h_norm = df_h.copy()
+            for _idx, _row in df_h_norm.iterrows():
+                _feo = _row['FeO']; _fe2o3 = _row['Fe2O3']
+                if _feo > 0 and _fe2o3 == 0:
+                    df_h_norm.at[_idx,'FeO'] = _feo/2; df_h_norm.at[_idx,'Fe2O3'] = _feo*1.11/2
+                elif _fe2o3 > 0 and _feo == 0:
+                    df_h_norm.at[_idx,'Fe2O3'] = _fe2o3/2; df_h_norm.at[_idx,'FeO'] = _fe2o3/1.11/2
+                _s = df_h_norm.loc[_idx, OXIDES].sum()
+                if _s > 0: df_h_norm.loc[_idx, OXIDES] = df_h_norm.loc[_idx, OXIDES] / _s * 100.0
+
+            # Classify and get current selection
+            _all_samples = df_h_norm['Sample'].tolist()
+            _current_sel = st.session_state.get('hyd_sample_select', _all_samples[0])
+            if _current_sel not in _all_samples:
+                _current_sel = _all_samples[0]
+
+            # ── TAS: matplotlib (beautiful) + Plotly points-only for clicking ─
+            # ── Plotly TAS with exact pyrolite coordinates + clickable points ──
+            import plotly.graph_objects as go
+            from streamlit_plotly_events import plotly_events
+
+            _sio2_vals = [float(df_h_norm.loc[df_h_norm['Sample']==s,'SiO2'].values[0])
+                         for s in _all_samples]
+            _tas_vals  = [(float(df_h_norm.loc[df_h_norm['Sample']==s,'Na2O'].values[0]) +
+                          float(df_h_norm.loc[df_h_norm['Sample']==s,'K2O'].values[0]))
+                         for s in _all_samples]
+
+            # Extract exact polygon vertices + label positions from pyrolite at runtime
+            import warnings as _w; _w.filterwarnings('ignore')
+            _fig_ext, _ax_ext = plt.subplots()
+            _tas_ext = TASclf()
+            _tas_ext.add_to_axes(ax=_ax_ext, add_labels=True, which_labels='volcanic',
+                                 facecolor='#F0F0F0', edgecolor='#888888')
+            _pyro_polys  = [p.get_path().vertices.tolist() for p in _ax_ext.patches]
+            _pyro_labels = [(t.get_text().replace("\n"," "), t.get_position())
+                            for t in _ax_ext.texts]
+            plt.close(_fig_ext)
+
+            # Build Plotly figure
+            _fig_p = go.Figure()
+
+            # Polygons — exact pyrolite boundaries, styled like matplotlib
+            for _verts in _pyro_polys:
+                _xs = [v[0] for v in _verts]
+                _ys = [v[1] for v in _verts]
+                _fig_p.add_trace(go.Scatter(
+                    x=_xs, y=_ys, fill='toself',
+                    fillcolor='rgba(255,255,255,0.0)',
+                    line=dict(color='#999999', width=1),
+                    mode='lines', showlegend=False, hoverinfo='skip'
+                ))
+
+            # Field labels
+            for _lbl, (_lx, _ly) in _pyro_labels:
+                _fig_p.add_annotation(
+                    x=_lx, y=_ly, text=_lbl, showarrow=False,
+                    font=dict(size=8.5, color='#505050', family='Arial'),
+                    bgcolor='rgba(255,255,255,0.0)', xanchor='center', yanchor='middle'
+                )
+
+            # Sample points — one trace per sample for reliable curveNumber
+            _N_POLY = len(_pyro_polys)
+            for _si, _sn in enumerate(_all_samples):
+                _is_sel = (_sn == _current_sel)
+                _fig_p.add_trace(go.Scatter(
+                    x=[_sio2_vals[_si]], y=[_tas_vals[_si]],
+                    mode='markers+text',
+                    marker=dict(
+                        color='tomato' if _is_sel else '#4C8CB5',
+                        size=16 if _is_sel else 10,
+                        line=dict(color='black', width=2 if _is_sel else 0.8),
+                    ),
+                    text=[_sn], textposition='top right',
+                    textfont=dict(size=9, color='#111111', family='Arial'),
+                    name=_sn, showlegend=False,
+                    hovertemplate=(f'<b>{_sn}</b><br>SiO₂: {_sio2_vals[_si]:.1f} wt%'
+                                   f'<br>Na₂O+K₂O: {_tas_vals[_si]:.1f} wt%<extra></extra>'),
+                ))
+
+            _fig_p.update_layout(
+                xaxis=dict(title='SiO₂ (wt%)', range=[35, 82],
+                           showgrid=True, gridcolor='rgba(200,200,200,0.5)',
+                           gridwidth=1, zeroline=False, linecolor='#888',
+                           ticks='outside', tickfont=dict(size=11)),
+                yaxis=dict(title='Na₂O + K₂O (wt%)', range=[0, 16],
+                           showgrid=True, gridcolor='rgba(200,200,200,0.5)',
+                           gridwidth=1, zeroline=False, linecolor='#888',
+                           ticks='outside', tickfont=dict(size=11)),
+                title=dict(text=(f'TAS  ·  🔴 <b>{_current_sel}</b>'
+                                 f'  · click a symbol to change'),
+                           font=dict(size=12, family='Arial'), x=0.5),
+                height=530, margin=dict(l=60, r=20, t=45, b=55),
+                plot_bgcolor='white', paper_bgcolor='white',
+                dragmode=False, font=dict(family='Arial')
             )
-            df_h = df_h[df_h["Sample"] == selected_sample].reset_index(drop=True)
+
+            _clicked = plotly_events(_fig_p, click_event=True,
+                                     override_height=530, key='tas_click')
+            if _clicked:
+                _c = _clicked[0]
+                _sample_idx = _c.get('curveNumber', -1) - _N_POLY
+                if 0 <= _sample_idx < len(_all_samples):
+                    _clicked_name = _all_samples[_sample_idx]
+                    if _clicked_name != _current_sel:
+                        st.session_state['hyd_sample_select'] = _clicked_name
+                        st.rerun()
+
+
+
+            # Dropdown (always shown as backup)
+            selected_sample = st.selectbox(
+                "Or select from dropdown:",
+                options=_all_samples,
+                index=_all_samples.index(_current_sel),
+                key="hyd_sample_select_dd"
+            )
+            if selected_sample != _current_sel:
+                st.session_state['hyd_sample_select'] = selected_sample
+                st.rerun()
+
+            # Use current selection
+            df_h = df_h[df_h["Sample"] == _current_sel].reset_index(drop=True)
+            st.success(f"✅ Selected: **{_current_sel}**")
         else:
             df_h = df_h.iloc[[0]]
 
     else:  # Manual input
         st.markdown("**Enter your anhydrous composition in wt% (H₂O = 0):**")
         sample_name_manual = st.text_input("Sample name:", value="My_sample", key="hyd_sname")
-        # Arrange oxides in a grid: 4 columns
         OXIDES_NO_H2O = [o for o in OXIDES if o != "H2O"]
         cols_manual = st.columns(4)
-        manual_vals = {}
-        defaults = {
+        defaults_m = {
             "SiO2": 48.05, "TiO2": 0.76, "Al2O3": 17.69, "FeO": 6.08,
             "MnO": 0.14, "MgO": 3.32, "CaO": 9.31, "Na2O": 3.45,
             "K2O": 7.55, "P2O5": 0.46, "Cr2O3": 0.0, "Fe2O3": 0.0,
         }
+        manual_vals = {}
         for i, ox in enumerate(OXIDES_NO_H2O):
             with cols_manual[i % 4]:
                 manual_vals[ox] = st.number_input(
                     ox, min_value=0.0, max_value=100.0,
-                    value=float(defaults.get(ox, 0.0)),
+                    value=float(defaults_m.get(ox, 0.0)),
                     step=0.01, format="%.3f",
                     key=f"hyd_manual_{ox}")
         manual_vals["H2O"] = 0.0
         total = sum(manual_vals[o] for o in OXIDES_NO_H2O)
         st.caption(f"Sum of oxides (anhydrous): **{total:.2f} wt%** — will be normalised to 100%")
-        # Build df_h from manual input
-        df_h = pd.DataFrame([{'Sample': sample_name_manual, **manual_vals}])
-
-    st.success(f"✅ Composition ready: **{df_h['Sample'].values[0]}**")
-    with st.expander("Preview composition"): st.dataframe(df_h)
+        df_h = pd.DataFrame([{"Sample": sample_name_manual, **manual_vals}])
+        st.success(f"✅ Composition ready: **{df_h['Sample'].values[0]}**")
+        with st.expander("Preview composition"): st.dataframe(df_h)
 
     # H2O contents input
     st.subheader("⚙️ Settings")
@@ -815,7 +1124,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                    'm from Eq. 12')
         visc_panel(axes[4],
                    lambda x: float(m_poly(x)),
-                   'm poly deg-{} (ANN fit)'.format(poly_deg))
+                   'Exp. saturation (ANN fit)')
 
         plt.tight_layout()
 
@@ -1051,7 +1360,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                            color='lightgray', s=60, marker='x', linewidths=2,
                            zorder=5, label='ANN (excluded)')
             ax.plot(x_smooth_ss, m_eq12_sm_ss, 'tomato', linewidth=2, linestyle='--', label='Eq. 12')
-            ax.plot(x_smooth_ss, m_poly_sm_ss, 'darkorange', linewidth=2, label='Poly deg-{}'.format(poly_deg_ss))
+            ax.plot(x_smooth_ss, m_poly_sm_ss, 'darkorange', linewidth=2, label='Exp. saturation (ANN)')
             ax.axhline(m_d_ss, color='steelblue', linewidth=2, linestyle=':', label='m constant = {:.2f}'.format(m_d_ss))
             ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Fragility index m')
             ax.set_title('Fragility index'); ax.legend(fontsize=8); ax.grid(True,linestyle='--',alpha=0.4)
@@ -1172,7 +1481,7 @@ showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temper
             model_specs = [
                 ('m_constant', f'm = constant = {m_d_ss:.2f}',     vh['visc_const'], 'steelblue'),
                 ('m_Eq12',     'm from Eq. 12',                      vh['visc_eq12'],  'tomato'),
-                (f'm_poly_deg{pd_v}', f'm poly deg-{pd_v} (ANN)',   vh['visc_poly'],  'darkorange'),
+                (f'm_poly_deg{pd_v}', 'Exp. saturation (ANN)',   vh['visc_poly'],  'darkorange'),
             ]
 
             st.markdown("**Results at T = {:.0f} °C**".format(T_label))
@@ -1304,5 +1613,6 @@ showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temper
                 data=buf_all,
                 file_name="{}_visc_vs_H2O_T{:.0f}C_all_models.png".format(sname_v, T_label),
                 mime="image/png", key="dl_vh_all_models")
+
 
 
