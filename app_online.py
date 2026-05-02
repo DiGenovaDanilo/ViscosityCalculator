@@ -307,7 +307,7 @@ requested contents, fit Tg(H₂O) with Eq. 9-10
 (Langhammer et al. 2021) and compare three
 fragility models:
 - m constant = m_dry
-- m from Eq. 12
+- m from Eq. 12, Langhammer et al. (2021)
 - m from polynomial fit on ANN points
         """)
     st.divider()
@@ -1007,20 +1007,29 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         with st.spinner("Fitting Tg(H₂O) with Eq. 9-10..."):
             (b_fit, c_fit, d_fit), tg_rmse = fit_tg(x_mol_arr, Tg_arr, Tg_d)
 
-        # ── Monotone detection ────────────────────────────────────────────────
-        # The ANN can produce m that increases at high H2O (unphysical).
-        # Find the last index where m is still monotonically decreasing.
-        mono_mask = np.ones(len(m_arr), dtype=bool)
-        _m_min = m_arr[0]
+        # ── Physical filter for m ─────────────────────────────────────────────
+        # Physical constraint: m(H2O) must be <= m_d (anhydrous value).
+        # Adding water cannot increase fragility above the dry value.
+        # Strategy:
+        #   1. Exclude all points where m > m_d (unphysical, e.g. initial ANN overshoot)
+        #   2. Among remaining points, keep only those forming a monotone
+        #      decreasing sequence (first occurrence wins at each x)
+        mono_mask = np.zeros(len(m_arr), dtype=bool)
+        mono_mask[0] = True   # always keep x=0 anchor
+        _m_running_min = m_d  # reference is m_d, not m_arr[0] which may be != m_d
         for _i in range(1, len(m_arr)):
-            if m_arr[_i] < _m_min:
-                _m_min = m_arr[_i]
-            else:
-                mono_mask[_i:] = False
-                break
+            if m_arr[_i] <= _m_running_min:   # physically valid AND monotone
+                mono_mask[_i] = True
+                _m_running_min = m_arr[_i]
         non_mono_detected = not np.all(mono_mask)
         x_fit  = x_mol_arr[mono_mask]
         m_fit  = m_arr[mono_mask]
+        # Safety: need at least 2 points for fit; if not, use all points <= m_d
+        if mono_mask.sum() < 2:
+            mono_mask = m_arr <= m_d
+            mono_mask[0] = True
+            x_fit = x_mol_arr[mono_mask]
+            m_fit = m_arr[mono_mask]
 
         # ── Fit m with ANCHORED polynomial (passes through m_d at x=0) ───────
         from scipy.optimize import curve_fit as _cf
@@ -1067,11 +1076,8 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         _alpha     = _k
         _beta      = _m_inf
         poly_rmse  = best_rmse
-        poly_label = 'm_inf + (m_d - m_inf)·exp(-k·x)  [m_inf={:.2f}, k={:.4f}]'.format(_m_inf, _k)
-
+        poly_label = 'm_inf + (m_d − m_inf)·exp(−k·x)  [m_inf={:.2f}, k={:.4f}]'.format(_m_inf, _k)
         m_poly = m_poly_anchored
-        poly_label = ('m_d + {:.4f}·x + {:.4f}·x²'.format(_alpha, _beta)
-                      if poly_deg==2 else 'm_d + {:.4f}·x'.format(_alpha))
 
         # Save to session state and warn if non-monotone behaviour detected
         st.session_state['non_mono'] = non_mono_detected
@@ -1095,27 +1101,28 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         ax1.set_xlabel('H$_2$O (mol%)', fontsize=11)
         ax1.set_ylabel('Tg (°C)', fontsize=11)
         ax1.set_title('Glass transition temperature', fontsize=11)
-        ax1.legend(fontsize=7); ax1.grid(True, linestyle='--', alpha=0.4)
+        ax1.legend(fontsize=7, loc='lower left'); ax1.grid(True, linestyle='--', alpha=0.4)
 
         # Panel 2: m vs H2O
         ax2 = axes[1]
-        _mm = np.ones(len(m_arr), dtype=bool)
-        _mn = m_arr[0]
+        # Same physical filter
+        _mm = np.zeros(len(m_arr), dtype=bool)
+        _mm[0] = True
+        _mn = m_d
         for _ii in range(1, len(m_arr)):
-            if m_arr[_ii] < _mn: _mn = m_arr[_ii]
-            else: _mm[_ii:] = False; break
+            if m_arr[_ii] <= _mn: _mm[_ii] = True; _mn = m_arr[_ii]
         ax2.scatter(x_mol_arr[_mm], m_arr[_mm], color='tomato', s=60, zorder=5,
                     label='ANN (used for fit)')
         if not np.all(_mm):
             ax2.scatter(x_mol_arr[~_mm], m_arr[~_mm], color='lightgray', s=60,
                         marker='x', linewidths=2, zorder=5, label='ANN (excluded)')
-        ax2.plot(x_smooth, m_eq12_sm, 'tomato', linewidth=2, linestyle='--', label='Eq. 12 (from Tg fit)')
+        ax2.plot(x_smooth, m_eq12_sm, 'tomato', linewidth=2, linestyle='--', label='Eq. 12, Langhammer et al. (2021)')
         ax2.plot(x_smooth, m_poly_sm, 'darkorange', linewidth=2, label='Exp. saturation (ANN)')
         ax2.axhline(m_d, color='steelblue', linewidth=2, linestyle=':', label='m constant = {:.2f}'.format(m_d))
         ax2.set_xlabel('H$_2$O (mol%)', fontsize=11)
         ax2.set_ylabel('Fragility index m', fontsize=11)
         ax2.set_title('Fragility index — three models', fontsize=11)
-        ax2.legend(fontsize=7); ax2.grid(True, linestyle='--', alpha=0.4)
+        ax2.legend(fontsize=7, loc='lower left'); ax2.grid(True, linestyle='--', alpha=0.4)
 
         # Helper
         def visc_panel(ax, m_func, title):
@@ -1138,7 +1145,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                    'm constant = {:.2f}'.format(m_d))
         visc_panel(axes[3],
                    lambda x: m_from_tg(tg_model(x, b_fit, c_fit, d_fit, Tg_d), Tg_d, m_d),
-                   'm from Eq. 12')
+                   'm from Eq. 12, Langhammer et al. (2021)')
         visc_panel(axes[4],
                    lambda x: float(m_poly(x)),
                    'Exp. saturation (ANN fit)')
@@ -1158,40 +1165,57 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             cell.fill=PatternFill('solid',start_color=color)
             cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
             cell.border=brd2
-        def dat2(cell, alt=False):
-            cell.alignment=ctr2; cell.border=brd2
+        def dat2(cell, alt=False, col=None):
+            if col == 3:  # Description column: left-align + wrap
+                cell.alignment=Alignment(horizontal='left',vertical='center',wrap_text=True)
+            elif col == 1:  # Parameter column: left-align
+                cell.alignment=Alignment(horizontal='left',vertical='center')
+            else:
+                cell.alignment=ctr2
+            cell.border=brd2
             if alt: cell.fill=PatternFill('solid',start_color='D6E4F0')
-            if isinstance(cell.value,float): cell.number_format='0.000'
+            if isinstance(cell.value,float): cell.number_format='0.000000'
 
         param_data = [
-            ('Sample',       sname,              'Sample name'),
-            ('A',            A_FIXED,            'log visc at infinite T (Zheng et al. 2011)'),
-            ('Tg_d (K)',     round(Tg_d,2),      'Anhydrous Tg'),
-            ('Tg_d (C)',     round(Tg_d-273.15,2),'Anhydrous Tg'),
-            ('m_dry',        round(m_d,3),        'Anhydrous fragility index'),
-            ('b (Eq.10)',    round(b_fit,5),      'Tg(H2O) fit param b'),
-            ('c (Eq.10)',    round(c_fit,5),      'Tg(H2O) fit param c'),
-            ('d (Eq.10)',    round(d_fit,5),      'Tg(H2O) fit param d'),
-            ('Tg fit RMSE (K)', round(tg_rmse,3), 'RMSE of Tg(H2O) fit'),
-            ('m_exp_m_inf',  round(_m_inf, 4), 'm limiting value at high H2O'),
-            ('m_exp_k',      round(_k, 6),    'Exp. decay rate k'),
-            ('m_model_RMSE', round(poly_rmse, 4), 'RMSE of exponential saturation fit'),
-            ('m_model_form', 'm_inf + (m_d - m_inf)*exp(-k*x)', 'Exponential saturation model'),
+            # ── Sample info ──────────────────────────────────────────────────────
+            ('Sample',          sname,                   'Sample name'),
+            # ── MYEGA parameters (Mauro et al. 2009) ────────────────────────────
+            ('A',               A_FIXED,                 'Pre-exponential term A in MYEGA eq. [log Pa.s] — fixed at -2.9 (Langhammer et al. 2021)'),
+            # ── Anhydrous Tg and m (ANN) ─────────────────────────────────────────
+            ('Tg_dry (K)',      round(Tg_d,2),           'Anhydrous glass transition temperature [K] — ANN output'),
+            ('Tg_dry (°C)',     round(Tg_d-273.15,2),    'Anhydrous glass transition temperature [°C] — ANN output'),
+            ('m_dry',           round(m_d,3),            'Anhydrous fragility index m — ANN output  |  m = (12-A) / log(Tg/T_onset)'),
+            # ── Tg(H2O) fit — Gordon-Taylor / Schneider (Eqs. 9-10, Langhammer 2021) ──
+            ('',                '',                      '--- Tg(H2O) fit: Eq.9-10 Langhammer et al. (2021) ---'),
+            ('b  (Eq.10)',      round(b_fit,5),          'Fit parameter b in Gordon-Taylor equation for Tg(H2O)'),
+            ('c  (Eq.10)',      round(c_fit,5),          'Fit parameter c (accounts for excess mixing)'),
+            ('d  (Eq.10)',      round(d_fit,5),          'Fit parameter d (higher-order correction)'),
+            ('Tg fit RMSE (K)', round(tg_rmse,3),       'Root-mean-square error of Tg(H2O) fit [K]'),
+            # ── m(H2O) exponential saturation fit ───────────────────────────────
+            ('',                '',                      '--- m(H2O) fit: exponential saturation model ---'),
+            ('m_inf',           round(_m_inf, 4),        'Limiting fragility at high H2O content  |  m --> m_inf as H2O --> inf'),
+            ('k  [mol%-1]',     round(_k, 6),            'Decay rate constant  |  controls how fast m drops from m_dry to m_inf'),
+            ('m fit RMSE',      round(poly_rmse, 4) if poly_rmse < 999 else 'n/a',
+                                                         'Root-mean-square error of m(H2O) exponential saturation fit'),
+            ('m(H2O) equation', 'm(x) = m_inf + (m_dry - m_inf) * exp(-k*x)',
+                                                         'x = H2O in mol%;  anchored at m_dry at x=0;  always monotone decreasing'),
         ]
+        col_widths = {'A': 22, 'B': 30, 'C': 70}
         for c,h in enumerate(['Parameter','Value','Description'],1):
             cell=ws_p.cell(row=1,column=c,value=h)
             hdr2(cell,'1B5E20')
-            ws_p.column_dimensions[get_column_letter(c)].width=max(len(h),8)+4
+            ws_p.column_dimensions[get_column_letter(c)].width=col_widths[get_column_letter(c)]
         ws_p.row_dimensions[1].height=25
         for r,(p,v,d) in enumerate(param_data,2):
+            ws_p.row_dimensions[r].height = 30
             for c,val in enumerate([p,v,d],1):
                 cell=ws_p.cell(row=r,column=c,value=val)
-                dat2(cell,alt=(r%2==0))
+                dat2(cell,alt=(r%2==0), col=c)
 
         # Sheet 2: Tg and m vs H2O
         ws_tgm = wb2.create_sheet('Tg_m_vs_H2O')
         h2o_headers=['H2O (wt%)','H2O (mol%)','Tg_ANN (K)','Tg_ANN (C)',
-                     'Tg_fit (K)','Tg_fit (C)','m_ANN','m_Eq12','m_poly','m_constant']
+                     'Tg_fit (K)','Tg_fit (C)','m_ANN','m_Eq12','m_ExpSat','m_constant']
         for c,h in enumerate(h2o_headers,1):
             cell=ws_tgm.cell(row=1,column=c,value=h)
             hdr2(cell,'4A235A')
@@ -1279,7 +1303,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             results, lambda x: m_d, tg_func, '1F4E79')
         make_visc_sheet_hydrous(wb2,'Visc_m_Eq12',
             results, lambda x: m_from_tg(tg_func(x), Tg_d, m_d), tg_func, '7B1FA2')
-        make_visc_sheet_hydrous(wb2,'Visc_m_poly',
+        make_visc_sheet_hydrous(wb2,'Visc_m_ExpSat',
             results, lambda x: float(m_poly(x)), tg_func, 'BF360C')
 
         buf_excel = io.BytesIO(); wb2.save(buf_excel); buf_excel.seek(0)
@@ -1313,7 +1337,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
 **RMSE** = {meta['tg_rmse']:.2f} K
         """)
         if st.session_state.get('non_mono'):
-            st.warning("⚠️ **Non-monotone m detected**: the ANN shows m increasing at high H₂O content (physically unreasonable). The **exponential saturation fit** uses only the monotone decreasing portion. See Langhammer et al. (2021).")
+            st.warning("⚠️ **Non-monotone m (ANN)**: the ANN produces m values that are not monotonically decreasing with H₂O content. Only monotone decreasing points were used for the exponential saturation fit. See Langhammer et al. (2021).")
         st.pyplot(st.session_state['hyd_fig'])
 
         # ── Individual panel downloads ─────────────────────────────────────────
@@ -1362,25 +1386,27 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             ax.plot(x_smooth_ss, Tg_smooth_ss-273.15, 'steelblue', linewidth=2,
                     label='Eq.9-10 fit  b={:.3f}, c={:.3f}, d={:.3f}'.format(b_ss,c_ss,d_ss))
             ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Tg (°C)')
-            ax.set_title('Glass transition temperature'); ax.legend(fontsize=8); ax.grid(True,linestyle='--',alpha=0.4)
+            ax.set_title('Glass transition temperature'); ax.legend(fontsize=8, loc='lower left'); ax.grid(True,linestyle='--',alpha=0.4)
 
         def panel_m(ax):
-            _mono_mask_ss = np.ones(len(m_arr_ss), dtype=bool)
-            _m_min_ss = m_arr_ss[0]
+            # Same physical filter as in computation
+            _mono_mask_ss = np.zeros(len(m_arr_ss), dtype=bool)
+            _mono_mask_ss[0] = True
+            _m_run_ss = meta_ss['m_d']
             for _ii in range(1, len(m_arr_ss)):
-                if m_arr_ss[_ii] < _m_min_ss: _m_min_ss = m_arr_ss[_ii]
-                else: _mono_mask_ss[_ii:] = False; break
+                if m_arr_ss[_ii] <= _m_run_ss:
+                    _mono_mask_ss[_ii] = True; _m_run_ss = m_arr_ss[_ii]
             ax.scatter(x_mol_arr_ss[_mono_mask_ss], m_arr_ss[_mono_mask_ss],
                        color='tomato', s=60, zorder=5, label='ANN (used for fit)')
             if not np.all(_mono_mask_ss):
                 ax.scatter(x_mol_arr_ss[~_mono_mask_ss], m_arr_ss[~_mono_mask_ss],
                            color='lightgray', s=60, marker='x', linewidths=2,
                            zorder=5, label='ANN (excluded)')
-            ax.plot(x_smooth_ss, m_eq12_sm_ss, 'tomato', linewidth=2, linestyle='--', label='Eq. 12')
+            ax.plot(x_smooth_ss, m_eq12_sm_ss, 'tomato', linewidth=2, linestyle='--', label='Eq. 12, Langhammer et al. (2021)')
             ax.plot(x_smooth_ss, m_poly_sm_ss, 'darkorange', linewidth=2, label='Exp. saturation (ANN)')
             ax.axhline(m_d_ss, color='steelblue', linewidth=2, linestyle=':', label='m constant = {:.2f}'.format(m_d_ss))
             ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Fragility index m')
-            ax.set_title('Fragility index'); ax.legend(fontsize=8); ax.grid(True,linestyle='--',alpha=0.4)
+            ax.set_title('Fragility index'); ax.legend(fontsize=8, loc='lower left'); ax.grid(True,linestyle='--',alpha=0.4)
 
         def panel_visc(ax, m_func, title):
             for i, r in enumerate(results_ss):
@@ -1399,8 +1425,8 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             ("Tg_vs_H2O",      "Tg vs H₂O",             panel_tg,  None),
             ("m_vs_H2O",       "m vs H₂O",               panel_m,   None),
             ("Visc_m_constant","Visc — m constant",       None,      m_const_func),
-            ("Visc_m_Eq12",    "Visc — m Eq.12",          None,      m_eq12_func),
-            ("Visc_m_poly",    "Visc — m poly",           None,      m_poly_func),
+            ("Visc_m_Eq12",    "Visc — m Eq.12, Langhammer et al. (2021)",          None,      m_eq12_func),
+            ("Visc_m_ExpSat",    "Visc — m Exp.Sat.",           None,      m_poly_func),
         ]
         for col, (fname, label, pf, mf) in zip(col_dl, panels):
             if pf is not None:
@@ -1497,7 +1523,7 @@ showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temper
 
             model_specs = [
                 ('m_constant', f'm = constant = {m_d_ss:.2f}',     vh['visc_const'], 'steelblue'),
-                ('m_Eq12',     'm from Eq. 12',                      vh['visc_eq12'],  'tomato'),
+                ('m_Eq12',     'm Eq.12, Langhammer et al. (2021)',                      vh['visc_eq12'],  'tomato'),
                 (f'm_poly_deg{pd_v}', 'Exp. saturation (ANN)',   vh['visc_poly'],  'darkorange'),
             ]
 
