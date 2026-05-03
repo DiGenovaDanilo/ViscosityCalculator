@@ -27,7 +27,7 @@ PATH_MODEL = os.path.join(BASE_DIR, "model")
 sys.path.insert(0, BASE_DIR)
 
 # ── Page config (MUST be first Streamlit call) ────────────────────────────────
-st.set_page_config(page_title="Volcanic Melt Viscosity Platform", page_icon="🌋", layout="wide")
+st.set_page_config(page_title="MELVIS — Melt VIScosity", page_icon="🌋", layout="wide")
 
 # ── Auto-download model from Zenodo ──────────────────────────────────────────
 ZENODO_URL = "https://zenodo.org/records/19945909/files/model.zip"
@@ -268,10 +268,13 @@ if st.session_state['hyd_done'] is None:
 # SIDEBAR
 # ==============================================================================
 with st.sidebar:
-    st.title("🌋 Volcanic Melt Viscosity Platform")
+    st.markdown("## 🌋 MELVIS")
+    st.caption("**MEL**t **VIS**cosity — volcanic melt viscosity platform by [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/)")
+    st.divider()
     mode = st.radio(
         "**Select mode:**",
         [
+            "🏠 Home",
             "🔷 Viscosity Calculator",
             "💧 Anhydrous and Hydrous Modelling",
             "🌋 Specific Composition Models",
@@ -281,7 +284,7 @@ with st.sidebar:
     st.divider()
     if mode == "🌋 Specific Composition Models":
         pass  # description shown in main area
-    if mode == "🔷 Viscosity Calculator":
+    elif mode == "🔷 Viscosity Calculator":
         st.markdown("""
 **Input format**
 
@@ -327,10 +330,103 @@ Langhammer et al. (2021), *GGG*
 [doi:10.1029/2021GC009918](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918)
         """)
     elif mode == "🌋 Specific Composition Models":
-        st.divider()
         st.markdown("📖 References shown below each model.")
     st.divider()
     st.markdown("**Questions?** ✉️ [danilo.digenova@cnr.it](mailto:danilo.digenova@cnr.it)")
+
+# ==============================================================================
+# ==============================================================================
+# HOME — LANDING PAGE
+# ==============================================================================
+if mode == "🏠 Home":
+
+    st.markdown("<div style='text-align:center'><span style='font-size:3em'>🌋</span></div>", unsafe_allow_html=True)
+    st.title("MELVIS — Melt VIScosity")
+    st.markdown("*Volcanic melt viscosity platform developed by the [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/), CNR-ISSMC, Rome, Italy*")
+    st.divider()
+
+    _c1,_c2,_c3 = st.columns(3)
+    with _c1:
+        st.markdown("""
+**🔷 Viscosity Calculator**  
+Calculate viscosity for any silicate melt composition using the Langhammer et al. (2022) ANN.  
+Upload a CSV, visualise MYEGA curves, TAS diagram, and download Excel outputs.
+        """)
+    with _c2:
+        st.markdown("""
+**💧 Anhydrous and Hydrous Modelling**  
+Model how viscosity evolves with dissolved H₂O for a single composition.  
+Fits Tg(H₂O) and fragility m(H₂O) and compares fragility models.
+        """)
+    with _c3:
+        st.markdown("""
+**🌋 Specific Composition Models**  
+MYEGA models calibrated on specific volcanic compositions:  
+Stromboli basalt, Peridotite, HPG8+Na, Anhydrous andesite, Vesuvio phonotephrite (472 CE).
+        """)
+
+    st.divider()
+    st.subheader("About GLASS laboratory")
+
+    # Logos row — loaded client-side via HTML img tags (bypasses Streamlit server proxy)
+    st.markdown("""
+<div style="display:flex; align-items:center; gap:40px; margin-bottom:20px; flex-wrap:wrap;">
+  <div style="text-align:center">
+    <img src="https://raw.githubusercontent.com/consiglionazionaledellericerche/cool-jconon/HEAD/cool-jconon-webapp-resources/src/main/resources/META-INF/img/logo-quadrato-en.png"
+         height="160" style="object-fit:contain"><br>
+    <small style="color:gray">CNR</small>
+  </div>
+  <div style="text-align:center">
+    <img src="https://www.cnr.it/it/istituto/073/logo"
+         height="160" style="object-fit:contain"><br>
+    <small style="color:gray">CNR-ISSMC</small>
+  </div>
+  <div style="text-align:center">
+    <img src="https://erc.europa.eu/sites/default/files/inline-images/HE%20logo.png"
+         height="160" style="object-fit:contain"><br>
+    <small style="color:gray">ERC</small>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    _g1,_g2 = st.columns([2,1])
+    with _g1:
+        st.markdown("""
+MELVIS is developed by the [**GLASS laboratory**](https://www.danilodigenova.org/glass-laboratory/) 
+(**G**ateway **L**aboratory of **A**morphous and **S**tructured **S**olids and Melts),
+established in **2023 in Rome** with funding from the **European Research Council (ERC)
+Consolidator Grant NANOVOLC** ([grant 101044772](https://cordis.europa.eu/project/id/101044772)).
+
+GLASS operates within the **National Research Council of Italy ([CNR](https://www.cnr.it/en))**
+at the Institute of Science, Technology and Sustainability for Ceramics
+([ISSMC](https://www.issmc.cnr.it/en/)).
+
+**Research focus:** physicochemical behaviour of silicate melts, magmas, and glasses,
+with emphasis on volcanic processes, eruption dynamics, and advanced materials design.
+
+**Principal Investigator:** [Danilo Di Genova](https://www.danilodigenova.org/) (Research Director at CNR-ISSMC)  
+📧 [danilo.digenova@cnr.it](mailto:danilo.digenova@cnr.it)
+        """)
+    with _g2:
+        st.markdown("""
+**🔬 Key research areas:**
+- Silicate melt rheology
+- Volcanic eruption dynamics
+- Glass transition & fragility
+- Magma degassing & water
+- Advanced ceramics & glasses
+- Sustainable materials
+        """)
+
+    st.divider()
+    st.subheader("How to cite MELVIS")
+    st.markdown("""
+Please cite the relevant model references shown in each module and acknowledge:
+
+> *MELVIS — GLASS laboratory, CNR-ISSMC, Rome, Italy.
+> ERC Consolidator Grant NANOVOLC (grant 101044772).*
+    """)
+    st.info("👈 Select a mode from the sidebar to get started.")
 
 # ==============================================================================
 # MODE 1 — VISCOSITY CALCULATOR
@@ -1678,7 +1774,8 @@ Viscosity models calibrated on specific compositions:
 
 - **Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w)
 - **Peridotite** — [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407)
-- **Metaluminous/peralkaline haplogranite** — [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868)
+- **Anhydrous metaluminous/peralkaline haplogranite** — [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868)
+- **Anhydrous andesite** — [Valdivia et al. (2025)](https://www.nature.com/articles/s43247-025-02424-9)
 - **Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
     """)
 
@@ -1686,7 +1783,8 @@ Viscosity models calibrated on specific compositions:
     comp_model = st.selectbox("Select composition model:", [
         "Stromboli basalt — Valdivia et al. (2023)",
         "Peridotite — Di Genova et al. (2023)",
-        "Metaluminous and peralkaline haplogranitic melts — Stopponi et al. (2026)",
+        "Anhydrous metaluminous and peralkaline haplogranitic melts — Stopponi et al. (2026)",
+        "Anhydrous andesite — Valdivia et al. (2025)",
         "Vesuvio phonotephrite (472 CE) — Dominijanni et al. (2026)",
     ])
 
@@ -1760,15 +1858,36 @@ Viscosity models calibrated on specific compositions:
         'params':    HPG8_PARAMS,
     }
 
-    ACTIVE = (HPG8 if 'Stopponi' in comp_model or 'haplogranitic' in comp_model or 'Metaluminous' in comp_model
+    # ── Andesite parameters (Valdivia et al. 2025, Commun. Earth Environ.) ────
+    # Anhydrous andesite; transition metals (FeOtot+TiO2+MnO) wt% relative to AND100
+    AND100_comp = {'SiO2':60.3754,'TiO2':0.7937,'Al2O3':16.6937,'FeO':6.7673,
+                   'MnO':0.1729,'MgO':3.0037,'CaO':6.6237,'Na2O':3.5041,'K2O':1.5756,'P2O5':0.1825}
+    AND0_comp   = {'SiO2':65.9068,'TiO2':0,    'Al2O3':18.0141,'FeO':0,
+                   'MnO':0,       'MgO':3.2123,'CaO':7.2568,'Na2O':3.8227,'K2O':1.7495,'P2O5':0}
+    AND = {
+        'name':      'Anhydrous andesite',
+        'ref':       'Valdivia et al. (2025)',
+        'model':     'AND',
+        'A':         -2.93,
+        'x_label':   'Transition metals content (wt% relative to AND100)',
+        'x_min':     0.0,
+        'x_max':     100.0,
+        'x_default': '0, 25, 50, 75, 100',
+        'AND100':    AND100_comp,
+        'AND0':      AND0_comp,
+    }
+
+    ACTIVE = (HPG8 if 'Stopponi' in comp_model or 'haplogranitic' in comp_model
+              else AND if '2025' in comp_model or 'Anhydrous andesite' in comp_model
               else PRD if 'Di Genova' in comp_model
               else POX if 'Dominijanni' in comp_model or '472 CE' in comp_model
               else STRM)
 
     with st.expander("📋 Model parameters"):
         _P = ACTIVE
-        if _P.get('model') == 'HPG8':
-            st.markdown(f"""
+        if _P.get('model') in ('HPG8', 'AND'):
+            if _P.get('model') == 'HPG8':
+                st.markdown(f"""
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | J5 | {_P['params']['J5']} | Constant in A(x) formula |
@@ -1779,7 +1898,17 @@ Viscosity models calibrated on specific compositions:
 | J9 | {_P['params']['J9']} | Intercept in m(x): m = J9 + K9·x |
 | K9 | {_P['params']['K9']} | Slope in m(x) |
 | x range | 0 – 20 mol% | Calibrated range for Excess Na₂O |
-            """)
+                """)
+            else:  # AND
+                st.markdown("""
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| A | −2.93 | Pre-exponential term [log Pa·s] |
+| Tg(x) | 737 − 0.26077·x − 0.00569·x² (°C) | Quadratic in TM content x [0–100] |
+| m(x) | 31.8 − 0.013·x | Linear in TM content x |
+| x | TM content wt% relative to AND100 | FeOtot + TiO₂ + MnO |
+| x range | 0 – 100 % | 0 = no TM; 100 = AND100 composition |
+                """)
         else:
             _mode = _P.get('m_mode', 'constant')
             if _mode == 'linear':
@@ -1957,6 +2086,122 @@ Viscosity models calibrated on specific compositions:
         st.caption("\U0001f4d6 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
                    "HPG8+Na: [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868), *Chem. Geol.* "
                    "Model calibrated for Excess Na\u2082O = 0\u201320 mol%.")
+
+    elif ACTIVE.get('model') == 'AND':
+        P = ACTIVE
+
+        def and_Tg(x):  return 737 + (-0.26077)*x + (-0.00569)*x**2   # °C
+        def and_m(x):   return -0.013*x + 31.8
+        def and_visc(T_K, x):
+            Tg_K = and_Tg(x) + 273.15
+            m_x  = and_m(x)
+            r    = Tg_K / T_K
+            return P['A'] + (12-P['A'])*r*np.exp((m_x/(12-P['A'])-1)*(r-1))
+
+        def and_comp(x):
+            return {k: (x/100)*P['AND100'][k] + (1-x/100)*P['AND0'].get(k,0) for k in P['AND100']}
+
+        st.subheader("⚙️ Parameters")
+        ac1,ac2,ac3,ac4 = st.columns(4)
+        with ac1:
+            aT_min = st.number_input("T min (°C):", value=700.0, step=50.0, min_value=300.0, max_value=1600.0, key='and_Tmin')
+        with ac2:
+            aT_max = st.number_input("T max (°C):", value=1300.0, step=50.0, min_value=300.0, max_value=1600.0, key='and_Tmax')
+        with ac3:
+            ax_input = st.text_input("TM content (%, 0–100, comma-separated):", value=P['x_default'], key='and_x')
+            try:
+                ax_list = sorted(set([max(0.0,min(100.0,float(v.strip()))) for v in ax_input.split(',') if v.strip()]))
+            except:
+                ax_list = [0, 25, 50, 75, 100]
+        with ac4:
+            aT_fixed = st.number_input("Fixed T for η vs TM content (°C):", value=1000.0, step=50.0,
+                                        min_value=300.0, max_value=1600.0, key='and_Tf')
+
+        if aT_max <= aT_min: st.error("T max must be greater than T min."); st.stop()
+
+        aT_arr   = np.linspace(aT_min+273.15, aT_max+273.15, 300)
+        ax_dense = np.linspace(0, 100, 200)
+        acmap    = plt.get_cmap('viridis', max(len(ax_list), 2))
+
+        aresults = [{'x':x,'Tg_C':round(and_Tg(x),2),'Tg_K':round(and_Tg(x)+273.15,2),'m':round(and_m(x),3)} for x in ax_list]
+
+        afig, (aax1, aax2, aax3) = plt.subplots(1, 3, figsize=(18,5))
+
+        # Panel 1: viscosity vs T
+        for i,x in enumerate(ax_list):
+            aax1.plot(aT_arr-273.15, [and_visc(T,x) for T in aT_arr],
+                      color=acmap(i), linewidth=2, label=f"{x:.0f}%")
+        aax1.set_xlabel("Temperature (°C)", fontsize=11)
+        aax1.set_ylabel("log₁₀(η / Pa·s)", fontsize=11)
+        aax1.set_title("Viscosity vs Temperature\nAndesite (Valdivia et al. 2025)", fontsize=11, fontweight='bold')
+        aax1.legend(fontsize=8, loc='upper right', title='TM content', title_fontsize=8)
+        aax1.grid(True, linestyle='--', alpha=0.4)
+
+        # Panel 2: Tg and m vs TM content
+        aax2b = aax2.twinx()
+        al1, = aax2.plot(ax_dense, [and_Tg(x) for x in ax_dense], 'steelblue', linewidth=2.5, label='Tg (°C)')
+        aax2.scatter([r['x'] for r in aresults], [r['Tg_C'] for r in aresults],
+                     color=[acmap(i) for i in range(len(aresults))], s=60, zorder=5, edgecolors='black', linewidths=0.8)
+        al2, = aax2b.plot(ax_dense, [and_m(x) for x in ax_dense], 'tomato', linewidth=2.5, linestyle='--', label='m')
+        aax2b.scatter([r['x'] for r in aresults], [r['m'] for r in aresults],
+                      color=[acmap(i) for i in range(len(aresults))], s=50, zorder=5, edgecolors='black', linewidths=0.8, marker='D')
+        aax2.set_xlabel("TM content (wt% relative to AND100)", fontsize=11)
+        aax2.set_ylabel("Tg (°C)", fontsize=11, color='steelblue')
+        aax2b.set_ylabel("Fragility index m", fontsize=11, color='tomato')
+        aax2.tick_params(axis='y', labelcolor='steelblue'); aax2b.tick_params(axis='y', labelcolor='tomato')
+        aax2.set_title("Tg and m vs TM content\nAndesite (Valdivia et al. 2025)", fontsize=11, fontweight='bold')
+        aax2.legend(handles=[al1,al2], fontsize=8, loc='center right')
+        aax2.grid(True, linestyle='--', alpha=0.4)
+
+        # Panel 3: viscosity vs TM content at fixed T
+        aax3.plot(ax_dense, [and_visc(aT_fixed+273.15,x) for x in ax_dense], 'purple', linewidth=2.5)
+        aax3.scatter(ax_list, [and_visc(aT_fixed+273.15,x) for x in ax_list],
+                     color=[acmap(i) for i in range(len(ax_list))], s=70, zorder=5, edgecolors='black', linewidths=0.8)
+        aax3.set_xlabel("TM content (wt% relative to AND100)", fontsize=11)
+        aax3.set_ylabel("log₁₀(η / Pa·s)", fontsize=11)
+        aax3.set_title(f"Viscosity vs TM content at {aT_fixed:.0f} °C\nAndesite (Valdivia et al. 2025)", fontsize=11, fontweight='bold')
+        aax3.grid(True, linestyle='--', alpha=0.4)
+
+        plt.tight_layout()
+        st.pyplot(afig)
+
+        # Save panels using bounding boxes
+        abuf_all = io.BytesIO()
+        afig.savefig(abuf_all, format='png', dpi=200, bbox_inches='tight'); abuf_all.seek(0)
+        def _bba(ax):
+            _buf=io.BytesIO()
+            bb=ax.get_tightbbox(afig.canvas.get_renderer()).transformed(afig.dpi_scale_trans.inverted())
+            afig.savefig(_buf,format='png',dpi=200,bbox_inches=bb); _buf.seek(0); return _buf
+        _ab1=_bba(aax1); _ab2=_bba(aax2); _ab3=_bba(aax3)
+        plt.close(afig)
+        _acols = st.columns(4)
+        with _acols[0]: st.download_button('⬇️ All figures', data=abuf_all, file_name='Andesite_all.png', mime='image/png', key='dl_and_all')
+        with _acols[1]: st.download_button('⬇️ Viscosity vs T', data=_ab1, file_name='Andesite_visc_vs_T.png', mime='image/png', key='dl_and_p0')
+        with _acols[2]: st.download_button('⬇️ Tg & m', data=_ab2, file_name='Andesite_Tg_m.png', mime='image/png', key='dl_and_p1')
+        with _acols[3]: st.download_button('⬇️ η vs TM', data=_ab3, file_name='Andesite_visc_vs_TM.png', mime='image/png', key='dl_and_p2')
+
+        st.subheader("📊 Model summary")
+        st.dataframe(pd.DataFrame(aresults).rename(columns={'x':'TM content (%)','Tg_C':'Tg (°C)','Tg_K':'Tg (K)','m':'m'}),
+                     use_container_width=True, hide_index=True)
+
+        st.subheader("🌡️ Viscosity at specific conditions")
+        ac1b,ac2b = st.columns(2)
+        with ac1b: aT_sp=st.number_input("T (°C):",value=1000.0,step=50.0,min_value=300.0,max_value=1600.0,key='and_Tsp')
+        with ac2b: ax_sp=st.number_input("TM content (%, 0–100):",value=50.0,step=5.0,min_value=0.0,max_value=100.0,key='and_xsp')
+        alv_sp=and_visc(aT_sp+273.15,ax_sp)
+        st.metric("log₁₀(η / Pa·s)",f"{alv_sp:.3f}",help=f"Tg={and_Tg(ax_sp):.1f}°C | m={and_m(ax_sp):.3f}")
+
+        abuf_xl=io.BytesIO()
+        arows=[{'TM content (%)':x,'T (°C)':Tc,'T (K)':Tc+273.15,
+                'log10_visc':round(and_visc(Tc+273.15,x),4),
+                'Tg (°C)':round(and_Tg(x),2),'m':round(and_m(x),3)}
+               for x in ax_list for Tc in np.arange(aT_min,aT_max+25,25)]
+        pd.DataFrame(arows).to_excel(abuf_xl,index=False,sheet_name='Andesite_viscosity'); abuf_xl.seek(0)
+        st.download_button('⬇️ Download Excel',data=abuf_xl,file_name='Andesite_viscosity.xlsx',
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='dl_and_xl')
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                   "Andesite model: [Valdivia et al. (2025)](https://www.nature.com/articles/s43247-025-02424-9), "
+                   "*Commun. Earth Environ.* AND100 = reference andesite; TM = FeOtot+TiO2+MnO.")
 
     else:
         # ── Inputs layout: H2O full width, T controls above their panels ─────────
