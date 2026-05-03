@@ -1674,13 +1674,18 @@ elif mode == "🌋 Specific Composition Models":
 
     st.title("🌋 Specific Composition Models")
     st.markdown("""
-    Viscosity models calibrated on specific volcanic compositions using the **MYEGA equation** (Mauro et al. 2009)
-    Available: **Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w) |
-    **Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
+Viscosity models calibrated on specific compositions. Available:  
+**Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w) |
+**Peridotite** — [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407) |
+**Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
     """)
 
     # ── Model selection ───────────────────────────────────────────────────────
-    comp_model = st.selectbox("Select composition model:", ["Stromboli basalt — Valdivia et al. (2023)", "Vesuvio phonotephrite (472 CE) — Dominijanni et al. (2026)"])
+    comp_model = st.selectbox("Select composition model:", [
+        "Stromboli basalt — Valdivia et al. (2023)",
+        "Peridotite — Di Genova et al. (2023)",
+        "Vesuvio phonotephrite (472 CE) — Dominijanni et al. (2026)",
+    ])
 
     # ── Stromboli parameters (Valdivia et al. 2023, Table S1) ─────────────────
     # From supplementary MYEGA calculator Excel
@@ -1717,7 +1722,25 @@ elif mode == "🌋 Specific Composition Models":
         'MW_dry':  None,     # not used — quadratic formula in mol_a/mol_b
     }
     # Select active model
-    ACTIVE = POX if 'Dominijanni' in comp_model or '472 CE' in comp_model else STRM
+    # ── Peridotite parameters (Di Genova et al. 2023, Chem. Geol.) ──────────
+    PRD = {
+        'name':    'Peridotite melt',
+        'ref':     'Di Genova et al. (2023)',
+        'A':       -2.93,
+        'Tg_d':    993.3,    # K
+        'm_d':     59.069,   # anhydrous fragility
+        'm_slope': -0.6281,  # dm/dx — NEGATIVE: m decreases with H2O
+        'b':       0.2737,
+        'c':       1.686,
+        'd':       -1.779,
+        'Tg_H2O':  136.0,
+        'MW_dry':  51.01,    # g/mol — from S44F6 (Di Genova et al. 2023), using FeOtot
+        'm_mode':  'linear',
+    }
+
+    ACTIVE = (PRD if 'Di Genova' in comp_model
+              else POX if 'Dominijanni' in comp_model or '472 CE' in comp_model
+              else STRM)
 
     with st.expander("📋 Model parameters"):
         _P = ACTIVE
@@ -1988,7 +2011,11 @@ elif mode == "🌋 Specific Composition Models":
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        key="dl_strm_xl")
 
-    if "472 CE" in comp_model:
+    if 'Di Genova' in comp_model:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                   "Peridotite: [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407), *Chem. Geol.* "
+                   "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    elif "472 CE" in comp_model:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
                    "Vesuvio parameters: [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126), *Earth Planet. Sci. Lett.* "
                    "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
