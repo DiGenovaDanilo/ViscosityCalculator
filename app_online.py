@@ -1804,6 +1804,10 @@ Viscosity models calibrated on specific compositions:
         'd':       -1.47,
         'Tg_H2O':  136.0,    # K, Tg of pure water
         'MW_dry':  64.0,     # g/mol effective molar weight of anhydrous melt
+        'm_d':     40.7,     # m_d alias for get_m compatibility
+        'composition': [{'label':'Stromboli basalt',
+            'SiO2':49.74,'TiO2':0.90,'Al2O3':17.46,'FeOtot':7.58,'MnO':0.14,
+            'MgO':6.06,'CaO':11.22,'Na2O':2.58,'K2O':2.04,'P2O5':0.53,'H2O':0.00}],
     }
 
     # ── Vesuvio phonotephrite parameters (Dominijanni et al. 2026) ──────────
@@ -1824,6 +1828,12 @@ Viscosity models calibrated on specific compositions:
         'mol_b':    3.6258,
         'm_mode':  'linear', # m(x) = m_d + m_slope * x_mol
         'MW_dry':  None,     # not used — quadratic formula in mol_a/mol_b
+        'composition': [{'label':'Vesuvio phonotephrite',
+            'SiO2':50.76,'TiO2':0.84,'Al2O3':17.47,'FeOtot':6.03,'MnO':0.14,
+            'MgO':4.00,'CaO':10.08,'Na2O':2.95,'K2O':7.18,'P2O5':0.55,'H2O':0.00}],
+        'composition': [{'label':'Vesuvio phonotephrite',
+            'SiO2':50.76,'TiO2':0.84,'Al2O3':17.47,'FeOtot':6.03,'MnO':0.14,
+            'MgO':4.00,'CaO':10.08,'Na2O':2.95,'K2O':7.18,'P2O5':0.55,'H2O':0.00}],
     }
     # Select active model
     # ── Peridotite parameters (Di Genova et al. 2023, Chem. Geol.) ──────────
@@ -1840,6 +1850,10 @@ Viscosity models calibrated on specific compositions:
         'Tg_H2O':  136.0,
         'MW_dry':  51.01,    # g/mol — from S44F6 (Di Genova et al. 2023), using FeOtot
         'm_mode':  'linear',
+        'composition': [{'label':'Peridotite melt',
+            'SiO2':43.28,'TiO2':0.01,'Al2O3':3.43,'FeOtot':6.40,'MnO':0.01,
+            'MgO':40.32,'CaO':6.49,'Na2O':0.02,'K2O':0.02,'P2O5':0.01,'H2O':0.00}],
+        'no_tas': True,
     }
 
     # ── HPG8+Na parameters (Stopponi et al. 2026, Chem. Geol.) ─────────────
@@ -1859,6 +1873,11 @@ Viscosity models calibrated on specific compositions:
         'x_max':     20.0,
         'x_default': '0, 2, 5, 10, 15, 20',
         'params':    HPG8_PARAMS,
+        'composition': [
+            {'label':'HPG8','SiO2':78.75,'Al2O3':11.86,'Na2O':4.32,'K2O':4.17,'TiO2':0,'FeOtot':0,'MnO':0,'MgO':0,'CaO':0,'P2O5':0,'H2O':0},
+            {'label':'HPG8 +5Na','SiO2':74.97,'Al2O3':11.67,'Na2O':8.63,'K2O':4.05,'TiO2':0,'FeOtot':0,'MnO':0,'MgO':0,'CaO':0,'P2O5':0,'H2O':0},
+            {'label':'HPG8 +10Na','SiO2':72.10,'Al2O3':11.39,'Na2O':12.32,'K2O':3.63,'TiO2':0,'FeOtot':0,'MnO':0,'MgO':0,'CaO':0,'P2O5':0,'H2O':0},
+            {'label':'HPG8 +20Na','SiO2':63.01,'Al2O3':11.02,'Na2O':21.55,'K2O':3.48,'TiO2':0,'FeOtot':0,'MnO':0,'MgO':0,'CaO':0,'P2O5':0,'H2O':0}],
     }
 
     # ── Andesite parameters (Valdivia et al. 2025, Commun. Earth Environ.) ────
@@ -1878,6 +1897,9 @@ Viscosity models calibrated on specific compositions:
         'x_default': '0, 25, 50, 75, 100',
         'AND100':    AND100_comp,
         'AND0':      AND0_comp,
+        'composition': [
+            {'label':'AND100 (with transition metals)','SiO2':60.38,'TiO2':0.79,'Al2O3':16.69,'FeOtot':6.77,'MnO':0.17,'MgO':3.00,'CaO':6.62,'Na2O':3.50,'K2O':1.58,'P2O5':0.18,'H2O':0.00},
+            {'label':'AND0 (no transition metals)','SiO2':65.91,'TiO2':0.00,'Al2O3':18.01,'FeOtot':0.00,'MnO':0.00,'MgO':3.21,'CaO':7.26,'Na2O':3.82,'K2O':1.75,'P2O5':0.00,'H2O':0.00}],
     }
 
     # ── Colli Albani tephriphonolite (Fanesi et al. 2025, JVGR) ─────────────
@@ -1898,6 +1920,9 @@ Viscosity models calibrated on specific compositions:
         'mol_b':    3.7366,
         'mol_c':    0.0105,
         'm_mode':  'linear',
+        'composition': [{'label':'Colli Albani tephriphonolite',
+            'SiO2':52.86,'TiO2':0.73,'Al2O3':19.52,'FeOtot':6.30,'MnO':0.18,
+            'MgO':2.23,'CaO':5.59,'Na2O':2.28,'K2O':9.48,'P2O5':0.37,'H2O':0.00}],
     }
 
     ACTIVE = (HPG8 if 'Stopponi' in comp_model or 'haplogranitic' in comp_model
@@ -2001,6 +2026,80 @@ Viscosity models calibrated on specific compositions:
         ratio = Tg_K / T_K
         return A + (12.0 - A) * ratio * np.exp((m / (12.0 - A) - 1.0) * (ratio - 1.0))
 
+
+    # ── Composition table + TAS ─────────────────────────────────────────────
+    if ACTIVE.get('composition'):
+        _comps = ACTIVE['composition']
+        _oxides = ['SiO2','TiO2','Al2O3','FeOtot','MnO','MgO','CaO','Na2O','K2O','P2O5','H2O']
+
+        # Composition table
+        st.subheader("📋 Reference composition (wt%)")
+        _comp_rows = []
+        for _c in _comps:
+            _row = {'Melt': _c['label']}
+            _tot = 0
+            for _ox in _oxides:
+                _v = _c.get(_ox, 0)
+                _row[_ox] = round(_v, 2) if _v else 0.00
+                _tot += _v if _v else 0
+            _row['Total'] = round(_tot, 2)
+            _comp_rows.append(_row)
+        _comp_df = pd.DataFrame(_comp_rows).set_index('Melt')
+        st.dataframe(_comp_df.style.format('{:.2f}'), use_container_width=True)
+
+        # TAS plot — same style as Mode 1 (pyrolite, Middlemost 1994)
+        if not ACTIVE.get('no_tas', False):
+            st.subheader("🌋 TAS diagram")
+            try:
+                import warnings; warnings.filterwarnings('ignore')
+                from pyrolite.util.classification import TAS as _TASclf
+                import matplotlib.patheffects as _pe
+                _fig_tas, _ax_tas = plt.subplots(figsize=(9, 6))
+                _tc = _TASclf()
+                _tc.add_to_axes(ax=_ax_tas, add_labels=True,
+                                which_labels='volcanic',
+                                facecolor='#F0F0F0', edgecolor='#888888',
+                                linewidth=1.0, alpha=0.9)
+                for _txt in _ax_tas.texts:
+                    _txt.set_fontsize(7); _txt.set_color('#555555')
+                    _txt.set_path_effects([_pe.withStroke(linewidth=2, foreground='white')])
+                _cmap_tas = plt.get_cmap('tab10', max(len(_comps), 2))
+                # Extend axes if any point exceeds standard range
+                _max_sio2 = max(_c.get('SiO2', 0) for _c in _comps)
+                _max_alk  = max(_c.get('Na2O', 0)+_c.get('K2O', 0) for _c in _comps)
+                _xlim = (37, max(80, _max_sio2 + 3))
+                _ylim = (0,  max(17, _max_alk  + 2))
+                for _ci, _c in enumerate(_comps):
+                    _sio2   = _c.get('SiO2', 0)
+                    _alkali = _c.get('Na2O', 0) + _c.get('K2O', 0)
+                    _ax_tas.scatter(_sio2, _alkali, color=_cmap_tas(_ci), s=120,
+                                    zorder=5, edgecolors='black', linewidths=0.8)
+                    # Annotation: AND100 above, AND0 below, others above
+                    _lbl = _c['label']
+                    _va  = 'top'    if ('no TM' in _lbl or 'AND0' in _lbl) else 'bottom'
+                    _dy  = -6       if _va == 'top' else 4
+                    _ax_tas.annotate(_lbl,
+                                     xy=(_sio2, _alkali), xytext=(4, _dy),
+                                     textcoords='offset points', fontsize=8,
+                                     va=_va, zorder=6,
+                                     path_effects=[_pe.withStroke(linewidth=2, foreground='white')])
+                _ax_tas.set_xlim(*_xlim); _ax_tas.set_ylim(*_ylim)
+                _ax_tas.set_xlabel('SiO₂ (wt%)', fontsize=12)
+                _ax_tas.set_ylabel('Na₂O + K₂O (wt%)', fontsize=12)
+                _ax_tas.set_title(f"TAS diagram — {ACTIVE['name']}", fontsize=12, fontweight='bold')
+                _ax_tas.grid(True, linestyle='--', alpha=0.3, zorder=0)
+                plt.tight_layout()
+                st.pyplot(_fig_tas)
+                _buf_tas = io.BytesIO()
+                _fig_tas.savefig(_buf_tas, format='png', dpi=200, bbox_inches='tight')
+                _buf_tas.seek(0)
+                plt.close(_fig_tas)
+                st.download_button("⬇️ Download TAS (PNG)", data=_buf_tas,
+                                   file_name=f"{ACTIVE['name'].replace(' ','_')}_TAS.png",
+                                   mime="image/png", key="dl_mode3_tas")
+                st.caption("📖 TAS after Middlemost (1994), *Earth-Science Reviews* 37, 215–224. Implemented via [pyrolite](https://pyrolite.readthedocs.io/).")
+            except Exception as _e_tas:
+                st.info(f"TAS diagram unavailable: {_e_tas}")
 
     # ── HPG8 model: special rendering ────────────────────────────────────────
     if ACTIVE.get('model') == 'HPG8':
