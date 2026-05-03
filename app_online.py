@@ -280,11 +280,7 @@ with st.sidebar:
     )
     st.divider()
     if mode == "🌋 Specific Composition Models":
-        st.markdown("""
-**Model:** Stromboli basalt  
-*Valdivia et al. (2023)*  
-MYEGA equation with composition-specific parameters calibrated on Stromboli basaltic melts.
-        """)
+        pass  # description shown in main area
     if mode == "🔷 Viscosity Calculator":
         st.markdown("""
 **Input format**
@@ -332,14 +328,7 @@ Langhammer et al. (2021), *GGG*
         """)
     elif mode == "🌋 Specific Composition Models":
         st.divider()
-        st.markdown("""
-**References:**  
-Valdivia et al. (2023), *Contrib. Mineral. Petrol.* 178, 45  
-[doi:10.1007/s00410-023-02024-w](https://link.springer.com/article/10.1007/s00410-023-02024-w)
-
-Langhammer et al. (2021), *GGG*  
-[doi:10.1029/2021GC009918](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918)
-        """)
+        st.markdown("📖 References shown below each model.")
     st.divider()
     st.markdown("**Questions?** ✉️ [danilo.digenova@cnr.it](mailto:danilo.digenova@cnr.it)")
 
@@ -1686,12 +1675,12 @@ elif mode == "🌋 Specific Composition Models":
     st.title("🌋 Specific Composition Models")
     st.markdown("""
     Viscosity models calibrated on specific volcanic compositions using the **MYEGA equation** (Mauro et al. 2009)
-    with parameters derived from experimental data. Currently available:
-    **Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w).
+    Available: **Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w) |
+    **Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
     """)
 
     # ── Model selection ───────────────────────────────────────────────────────
-    comp_model = st.selectbox("Select composition model:", ["Stromboli basalt — Valdivia et al. (2023)"])
+    comp_model = st.selectbox("Select composition model:", ["Stromboli basalt — Valdivia et al. (2023)", "Vesuvio phonotephrite (472 CE) — Dominijanni et al. (2026)"])
 
     # ── Stromboli parameters (Valdivia et al. 2023, Table S1) ─────────────────
     # From supplementary MYEGA calculator Excel
@@ -1708,32 +1697,72 @@ elif mode == "🌋 Specific Composition Models":
         'MW_dry':  64.0,     # g/mol effective molar weight of anhydrous melt
     }
 
+    # ── Vesuvio phonotephrite parameters (Dominijanni et al. 2026) ──────────
+    POX = {
+        'name':    'Vesuvio phonotephrite (472 CE)',
+        'ref':     'Dominijanni et al. (2026)',
+        'A':       -2.93,
+        'Tg_d':    917.05,   # K, anhydrous Tg
+        'm_d':     35.92,    # anhydrous fragility index (H2O=0)
+        'm_slope': 0.18857,  # dm/dx [mol%^-1] — linear fit (Excel cell D2)
+        'b':       0.1322,   # Gordon-Taylor param (Excel cell E2)
+        'c':       1.54232,  # Excel cell F2
+        'd':       -1.40674, # Excel cell G2
+        'Tg_H2O':  136.0,    # K (Excel cell H2)
+        # Quadratic wt% → mol% conversion specific to this composition (Excel cell C8)
+        # x_mol = mol_a * wt^2 + mol_b * wt
+        'mol_a':   -0.0801,
+        'mol_b':    3.6258,
+        'm_mode':  'linear', # m(x) = m_d + m_slope * x_mol
+        'MW_dry':  None,     # not used — quadratic formula in mol_a/mol_b
+    }
+    # Select active model
+    ACTIVE = POX if 'Dominijanni' in comp_model or '472 CE' in comp_model else STRM
+
     with st.expander("📋 Model parameters"):
+        _P = ACTIVE
+        _mode = _P.get('m_mode', 'constant')
+        if _mode == 'linear':
+            _m_label = f"{_P['m_d']} + {_P['m_slope']} · x_mol — linear calibration"
+            _mol_conv = (f"x_mol = {_P['mol_a']}·wt² + {_P['mol_b']}·wt  (empirical fit)"
+                         if 'mol_a' in _P else f"standard formula using MW_dry = {_P.get('MW_dry','')}")
+        else:
+            _m_label = f"{_P.get('m', _P.get('m_d', ''))} (constant)"
+            _mol_conv = f"standard formula using MW_dry = {_P.get('MW_dry','')}"
         st.markdown(f"""
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| A | {STRM['A']} | Pre-exponential term [log Pa·s] |
-| Tg_dry | {STRM['Tg_d']} K  ({STRM['Tg_d']-273.15:.1f} °C) | Anhydrous glass transition temperature |
-| m | {STRM['m']} | Anhydrous fragility index |
-| b | {STRM['b']} | Gordon-Taylor mixing parameter |
-| c | {STRM['c']} | Excess mixing term |
-| d | {STRM['d']} | Higher-order correction |
-| Tg_H₂O | {STRM['Tg_H2O']} K | Glass transition of pure water |
-
-**Reference:** Valdivia P., Di Genova D., Hess K.-U., Cimarelli C., Dingwell D.B. (2023).
-*Contributions to Mineralogy and Petrology*, 178, 45.
-[https://link.springer.com/article/10.1007/s00410-023-02024-w](https://link.springer.com/article/10.1007/s00410-023-02024-w)
+| A | {_P['A']} | Pre-exponential term [log Pa·s] |
+| Tg_dry | {_P['Tg_d']} K  ({_P['Tg_d']-273.15:.1f} °C) | Anhydrous glass transition temperature |
+| m | {_m_label} | Fragility index |
+| b | {_P['b']} | Gordon-Taylor mixing parameter |
+| c | {_P['c']} | Excess mixing term |
+| d | {_P['d']} | Higher-order correction |
+| Tg_H₂O | {_P['Tg_H2O']} K | Glass transition of pure water |
+| wt% → mol% | {_mol_conv} | Conversion formula for H₂O content |
         """)
 
-    # ── Helper functions ──────────────────────────────────────────────────────
+    # ── Helper functions (generic, work for any model) ───────────────────────
     def strm_wt_to_mol(h2o_wt, MW_dry):
-        """Convert H2O wt% to mol% for Stromboli composition."""
+        """Generic wt% → mol% conversion using molar weight of dry melt."""
         n_h2o = h2o_wt / 18.015
         n_dry = (100.0 - h2o_wt) / MW_dry
         return n_h2o / (n_h2o + n_dry) * 100.0 if (n_h2o + n_dry) > 0 else 0.0
 
+    def wt_to_mol(h2o_wt, p):
+        """Wt% → mol% using model-specific method.
+        If p has mol_a/mol_b: quadratic empirical fit (e.g. Pollena Excel cell C8).
+        Otherwise: generic formula using MW_dry.
+        """
+        if 'mol_a' in p:
+            return p['mol_a'] * h2o_wt**2 + p['mol_b'] * h2o_wt
+        mw = p.get('MW_dry')
+        if mw:
+            return strm_wt_to_mol(h2o_wt, mw)
+        return h2o_wt  # fallback
+
     def strm_tg(x_mol_pct, p):
-        """Tg(H2O) via Gordon-Taylor/Schneider (Eqs. 9-10, Langhammer 2021)."""
+        """Tg(H2O) — Eqs. 9-10, Langhammer et al. (2021)."""
         x = x_mol_pct / 100.0
         denom = p['b'] * (1.0 - x) + x
         if denom == 0: return p['Tg_d']
@@ -1743,8 +1772,19 @@ elif mode == "🌋 Specific Composition Models":
                 + p['c'] * w1 * w2 * (p['Tg_d'] - p['Tg_H2O'])
                 + p['d'] * w1 * w2**2 * (p['Tg_d'] - p['Tg_H2O']))
 
+    def get_m(x_mol_pct, p):
+        """Fragility index:
+          - 'constant' (Stromboli): m = m_d fixed
+          - 'linear'   (Pollena):   m = m_d + m_slope * x  (x in mol%)
+        """
+        mode = p.get('m_mode', 'constant')
+        if mode == 'linear':
+            return p['m_d'] + p['m_slope'] * x_mol_pct
+        else:
+            return p.get('m', p.get('m_d', 35.0))
+
     def strm_myega(T_K, Tg_K, m, A):
-        """MYEGA viscosity equation (Mauro et al. 2009)."""
+        """MYEGA viscosity equation — Mauro et al. (2009)."""
         ratio = Tg_K / T_K
         return A + (12.0 - A) * ratio * np.exp((m / (12.0 - A) - 1.0) * (ratio - 1.0))
 
@@ -1787,35 +1827,42 @@ elif mode == "🌋 Specific Composition Models":
     # Compute all data
     results_s = []
     for i_h, h2o_wt in enumerate(h2o_list_s):
-        x_mol = strm_wt_to_mol(h2o_wt, STRM['MW_dry'])
-        Tg_h  = strm_tg(x_mol, STRM)
+        x_mol = wt_to_mol(h2o_wt, ACTIVE)
+        Tg_h  = strm_tg(x_mol, ACTIVE)
         results_s.append({'h2o_wt': h2o_wt, 'x_mol': round(x_mol, 3),
                           'Tg_K': round(Tg_h, 2), 'Tg_C': round(Tg_h - 273.15, 2)})
     h2o_dense = np.linspace(0, max(max(h2o_list_s), 5.0) * 1.05, 200)
-    tg_curve  = [strm_tg(strm_wt_to_mol(h, STRM['MW_dry']), STRM) - 273.15 for h in h2o_dense]
+    tg_curve  = [strm_tg(wt_to_mol(h, ACTIVE), ACTIVE) - 273.15 for h in h2o_dense]
     h2o_vh    = np.linspace(0, max(max(h2o_list_s), 5.0), 200)
     visc_vh   = [strm_myega(T_fixed_c+273.15,
-                             strm_tg(strm_wt_to_mol(h, STRM['MW_dry']), STRM),
-                             STRM['m'], STRM['A']) for h in h2o_vh]
+                             strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
+                             get_m(wt_to_mol(h, ACTIVE), ACTIVE), ACTIVE['A']) for h in h2o_vh]
     visc_pts  = [strm_myega(T_fixed_c+273.15,
-                             strm_tg(strm_wt_to_mol(h, STRM['MW_dry']), STRM),
-                             STRM['m'], STRM['A']) for h in h2o_list_s]
+                             strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
+                             get_m(wt_to_mol(h, ACTIVE), ACTIVE), ACTIVE['A']) for h in h2o_list_s]
 
     # Single figure — 3 panels on one row
     fig_s, (ax_visc, ax_tgm, ax_vh2) = plt.subplots(1, 3, figsize=(18, 5))
 
     # Panel 1: viscosity vs T
+    _has_linear_m = ACTIVE.get('m_mode', 'constant') != 'constant'
     for i_h, h2o_wt in enumerate(h2o_list_s):
-        x_mol = strm_wt_to_mol(h2o_wt, STRM['MW_dry'])
-        Tg_h  = strm_tg(x_mol, STRM)
-        visc  = [strm_myega(T, Tg_h, STRM['m'], STRM['A']) for T in T_arr]
-        ax_visc.plot(T_arr - 273.15, visc, color=cmap_s(i_h), linewidth=2,
-                     label=f"{h2o_wt:.1f} wt%")
+        x_mol = wt_to_mol(h2o_wt, ACTIVE)
+        Tg_h  = strm_tg(x_mol, ACTIVE)
+        _m_h  = get_m(x_mol, ACTIVE)
+        visc  = [strm_myega(T, Tg_h, _m_h, ACTIVE['A']) for T in T_arr]
+        _lbl  = f"{h2o_wt:.1f} wt%" + (" (m lin.)" if _has_linear_m else "")
+        ax_visc.plot(T_arr - 273.15, visc, color=cmap_s(i_h), linewidth=2, label=_lbl)
+        if _has_linear_m:
+            visc_mc = [strm_myega(T, Tg_h, ACTIVE['m_d'], ACTIVE['A']) for T in T_arr]
+            ax_visc.plot(T_arr - 273.15, visc_mc, color=cmap_s(i_h), linewidth=1.5,
+                         linestyle=':', alpha=0.7,
+                         label=f"{h2o_wt:.1f} wt% (m const.)" if i_h == 0 else "_")
     ax_visc.set_xlabel("Temperature (°C)", fontsize=11)
-    ax_visc.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)", fontsize=11)
-    ax_visc.set_title("Viscosity vs Temperature\nStromboli (Valdivia et al. 2023)",
+    ax_visc.set_ylabel("log₁₀(η / Pa·s)", fontsize=11)
+    ax_visc.set_title(f"Viscosity vs Temperature\n{ACTIVE['name']}",
                        fontsize=11, fontweight='bold')
-    ax_visc.legend(fontsize=8, loc='upper right', title='H\u2082O', title_fontsize=8)
+    ax_visc.legend(fontsize=7, loc='upper right')
     ax_visc.grid(True, linestyle='--', alpha=0.4)
 
     # Panel 2: Tg and m vs H2O (twin axes, m constant)
@@ -1824,28 +1871,51 @@ elif mode == "🌋 Specific Composition Models":
     ax_tgm.scatter([r['h2o_wt'] for r in results_s], [r['Tg_C'] for r in results_s],
                    color=[cmap_s(i) for i in range(len(results_s))],
                    s=60, zorder=5, edgecolors='black', linewidths=0.8)
-    l2, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [STRM['m'], STRM['m']],
-                        color='tomato', linewidth=2.5, linestyle='--',
-                        label=f"m = {STRM['m']} (constant)")
-    ax_tgm2.set_ylim(STRM['m'] * 0.8, STRM['m'] * 1.2)
+    _m_d_val = ACTIVE.get('m_d', ACTIVE.get('m', 35.0))
+    if _has_linear_m:
+        m_curve_dense = [get_m(wt_to_mol(h, ACTIVE), ACTIVE) for h in h2o_dense]
+        l2, = ax_tgm2.plot(h2o_dense, m_curve_dense, color='tomato', linewidth=2.5,
+                            linestyle='--', label=f"m linear: {ACTIVE['m_d']} + {ACTIVE['m_slope']:.5f}·x")
+        _m_pts = [get_m(wt_to_mol(r['h2o_wt'], ACTIVE), ACTIVE) for r in results_s]
+        ax_tgm2.scatter([r['h2o_wt'] for r in results_s], _m_pts,
+                        color=[cmap_s(i) for i in range(len(results_s))],
+                        s=50, zorder=5, edgecolors='black', linewidths=0.7, marker='D')
+        l2b, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [_m_d_val, _m_d_val],
+                             color='darkorange', linewidth=1.8, linestyle=':',
+                             label=f"m constant = {_m_d_val}")
+        _legend_handles = [l1, l2, l2b]
+    else:
+        l2, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [_m_d_val, _m_d_val],
+                            color='tomato', linewidth=2.5, linestyle='--',
+                            label=f"m = {_m_d_val} (constant)")
+        _legend_handles = [l1, l2]
+    ax_tgm2.set_ylim(min(_m_d_val*0.85, 20), max(_m_d_val*1.15, 50))
     ax_tgm.set_xlabel("H\u2082O (wt%)", fontsize=11)
     ax_tgm.set_ylabel("Tg (\u00b0C)", fontsize=11, color='steelblue')
     ax_tgm2.set_ylabel("Fragility index m", fontsize=11, color='tomato')
     ax_tgm.tick_params(axis='y', labelcolor='steelblue')
     ax_tgm2.tick_params(axis='y', labelcolor='tomato')
-    ax_tgm.set_title("Tg and m vs H\u2082O\nStromboli (Valdivia et al. 2023)",
+    ax_tgm.set_title(f"Tg and m vs H\u2082O\n{ACTIVE['name']}",
                       fontsize=11, fontweight='bold')
-    ax_tgm.legend(handles=[l1, l2], fontsize=8, loc='lower left')
+    ax_tgm.legend(handles=_legend_handles, fontsize=8, loc='lower left')
     ax_tgm.grid(True, linestyle='--', alpha=0.4)
 
     # Panel 3: viscosity vs H2O at fixed T
-    ax_vh2.plot(h2o_vh, visc_vh, 'purple', linewidth=2.5)
+    _lbl_vh = 'm linear' if _has_linear_m else 'm'
+    ax_vh2.plot(h2o_vh, visc_vh, 'purple', linewidth=2.5, label=_lbl_vh)
     ax_vh2.scatter(h2o_list_s, visc_pts,
                    color=[cmap_s(i) for i in range(len(h2o_list_s))],
                    s=70, zorder=5, edgecolors='black', linewidths=0.8)
+    if _has_linear_m:
+        visc_vh_mc = [strm_myega(T_fixed_c+273.15,
+                                  strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
+                                  ACTIVE['m_d'], ACTIVE['A']) for h in h2o_vh]
+        ax_vh2.plot(h2o_vh, visc_vh_mc, 'darkorange', linewidth=1.8,
+                    linestyle=':', label=f"m constant = {ACTIVE['m_d']}")
+        ax_vh2.legend(fontsize=8, loc='upper right')
     ax_vh2.set_xlabel("H\u2082O (wt%)", fontsize=11)
     ax_vh2.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)", fontsize=11)
-    ax_vh2.set_title(f"Viscosity vs H\u2082O at {T_fixed_c:.0f} \u00b0C\nStromboli (Valdivia et al. 2023)",
+    ax_vh2.set_title(f"Viscosity vs H\u2082O at {T_fixed_c:.0f} \u00b0C\n{ACTIVE['name']}",
                      fontsize=11, fontweight='bold')
     ax_vh2.grid(True, linestyle='--', alpha=0.4)
 
@@ -1858,7 +1928,7 @@ elif mode == "🌋 Specific Composition Models":
     buf_fig_s.seek(0)
     plt.close(fig_s)
     st.download_button("\u2b07\ufe0f Download figures (PNG)", data=buf_fig_s,
-                       file_name="Stromboli_viscosity_plots.png", mime="image/png",
+                       file_name=f"{ACTIVE['name'].replace(' ', '_')}_viscosity_plots.png", mime="image/png",
                        key="dl_strm_fig")
 
         # ── Summary table ─────────────────────────────────────────────────────────
@@ -1876,12 +1946,26 @@ elif mode == "🌋 Specific Composition Models":
     with col_sp2:
         h2o_spec = st.number_input("H₂O (wt%):", value=1.0, step=0.5,
                                     min_value=0.0, max_value=10.0, key='strm_h2o_spec')
-    x_mol_sp = strm_wt_to_mol(h2o_spec, STRM['MW_dry'])
-    Tg_sp    = strm_tg(x_mol_sp, STRM)
-    logvisc_sp = strm_myega(T_spec + 273.15, Tg_sp, STRM['m'], STRM['A'])
-    visc_pa  = 10**logvisc_sp
-    st.metric("log₁₀(η / Pa·s)", f"{logvisc_sp:.3f}",
-              help=f"η = {visc_pa:.2e} Pa·s | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
+    x_mol_sp   = wt_to_mol(h2o_spec, ACTIVE)
+    Tg_sp      = strm_tg(x_mol_sp, ACTIVE)
+    m_sp_var   = get_m(x_mol_sp, ACTIVE)           # linear or constant
+    m_sp_cst   = ACTIVE.get('m_d', ACTIVE.get('m', 35.0))  # always constant
+    lv_var     = strm_myega(T_spec + 273.15, Tg_sp, m_sp_var, ACTIVE['A'])
+    lv_cst     = strm_myega(T_spec + 273.15, Tg_sp, m_sp_cst, ACTIVE['A'])
+    _has_lin   = ACTIVE.get('m_mode', 'constant') != 'constant'
+
+    if _has_lin:
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            st.metric("log₁₀(η / Pa·s) — m linear",  f"{lv_var:.3f}",
+                      help=f"m = {m_sp_var:.3f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
+        with col_v2:
+            st.metric("log₁₀(η / Pa·s) — m constant", f"{lv_cst:.3f}",
+                      help=f"m = {m_sp_cst:.2f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
+    else:
+        visc_pa = 10**lv_var
+        st.metric("log₁₀(η / Pa·s)", f"{lv_var:.3f}",
+                  help=f"m = {m_sp_var:.2f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
 
     # ── Download ──────────────────────────────────────────────────────────────
     st.subheader("📥 Download results")
@@ -1890,20 +1974,25 @@ elif mode == "🌋 Specific Composition Models":
     T_dl = np.arange(T_min_c, T_max_c + T_step_dl, T_step_dl)
     rows_dl = []
     for h2o_wt in h2o_list_s:
-        x_mol = strm_wt_to_mol(h2o_wt, STRM['MW_dry'])
-        Tg_h  = strm_tg(x_mol, STRM)
+        x_mol = wt_to_mol(h2o_wt, ACTIVE)
+        Tg_h  = strm_tg(x_mol, ACTIVE)
         for Tc in T_dl:
-            lv = strm_myega(Tc + 273.15, Tg_h, STRM['m'], STRM['A'])
+            lv = strm_myega(Tc + 273.15, Tg_h, ACTIVE.get('m_d', ACTIVE.get('m', 35.0)), ACTIVE['A'])
             rows_dl.append({'H2O (wt%)': h2o_wt, 'H2O (mol%)': round(x_mol, 3),
                             'T (°C)': Tc, 'T (K)': Tc + 273.15,
                             'log10_visc': round(lv, 4)})
     pd.DataFrame(rows_dl).to_excel(buf_s, index=False, sheet_name='Stromboli_viscosity')
     buf_s.seek(0)
     st.download_button("⬇️ Download Excel", data=buf_s,
-                       file_name="Stromboli_viscosity.xlsx",
+                       file_name=f"{ACTIVE['name'].replace(' ', '_')}_viscosity.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        key="dl_strm_xl")
 
-    st.caption("📖 MYEGA equation: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-               "Stromboli parameters: [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w), *Contrib. Mineral. Petrol.* 178, 45. "
-               "Tg(H₂O) dependence: [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    if "472 CE" in comp_model:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                   "Vesuvio parameters: [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126), *Earth Planet. Sci. Lett.* "
+                   "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    else:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                   "Stromboli parameters: [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w), *Contrib. Mineral. Petrol.* 178, 45. "
+                   "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
