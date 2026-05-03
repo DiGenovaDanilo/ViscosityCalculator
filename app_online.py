@@ -1674,16 +1674,19 @@ elif mode == "🌋 Specific Composition Models":
 
     st.title("🌋 Specific Composition Models")
     st.markdown("""
-Viscosity models calibrated on specific compositions. Available:  
-**Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w) |
-**Peridotite** — [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407) |
-**Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
+Viscosity models calibrated on specific compositions:
+
+- **Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w)
+- **Peridotite** — [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407)
+- **Metaluminous/peralkaline haplogranite** — [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868)
+- **Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
     """)
 
     # ── Model selection ───────────────────────────────────────────────────────
     comp_model = st.selectbox("Select composition model:", [
         "Stromboli basalt — Valdivia et al. (2023)",
         "Peridotite — Di Genova et al. (2023)",
+        "Metaluminous and peralkaline haplogranitic melts — Stopponi et al. (2026)",
         "Vesuvio phonotephrite (472 CE) — Dominijanni et al. (2026)",
     ])
 
@@ -1738,21 +1741,55 @@ Viscosity models calibrated on specific compositions. Available:
         'm_mode':  'linear',
     }
 
-    ACTIVE = (PRD if 'Di Genova' in comp_model
+    # ── HPG8+Na parameters (Stopponi et al. 2026, Chem. Geol.) ─────────────
+    # Model for anhydrous peralkaline rhyolite; Excess Na2O replaces water
+    # All MYEGA params depend on Excess Na2O (mol%)
+    HPG8_PARAMS = {
+        'J5': -1.55, 'K5': 6.35, 'L5': 0.55,   # A = J5 - K5*L5^x
+        'J7': 1034,  'K7': -0.1,                 # Tg = J7*(1+x)^K7
+        'J9': 22.95, 'K9': 0.7,                  # m  = J9 + K9*x
+    }
+    HPG8 = {
+        'name':      'HPG8+Na peralkaline rhyolite',
+        'ref':       'Stopponi et al. (2026)',
+        'model':     'HPG8',        # special model — not MYEGA with fixed A
+        'x_label':   'Excess Na₂O (mol%)',
+        'x_min':     0.0,
+        'x_max':     20.0,
+        'x_default': '0, 2, 5, 10, 15, 20',
+        'params':    HPG8_PARAMS,
+    }
+
+    ACTIVE = (HPG8 if 'Stopponi' in comp_model or 'haplogranitic' in comp_model or 'Metaluminous' in comp_model
+              else PRD if 'Di Genova' in comp_model
               else POX if 'Dominijanni' in comp_model or '472 CE' in comp_model
               else STRM)
 
     with st.expander("📋 Model parameters"):
         _P = ACTIVE
-        _mode = _P.get('m_mode', 'constant')
-        if _mode == 'linear':
-            _m_label = f"{_P['m_d']} + {_P['m_slope']} · x_mol — linear calibration"
-            _mol_conv = (f"x_mol = {_P['mol_a']}·wt² + {_P['mol_b']}·wt  (empirical fit)"
-                         if 'mol_a' in _P else f"standard formula using MW_dry = {_P.get('MW_dry','')}")
+        if _P.get('model') == 'HPG8':
+            st.markdown(f"""
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| J5 | {_P['params']['J5']} | Constant in A(x) formula |
+| K5 | {_P['params']['K5']} | Coefficient in A(x) formula |
+| L5 | {_P['params']['L5']} | Base in A(x): A = J5 − K5·L5^x |
+| J7 | {_P['params']['J7']} K | Constant in Tg(x): Tg = J7·(1+x)^K7 |
+| K7 | {_P['params']['K7']} | Exponent in Tg(x) |
+| J9 | {_P['params']['J9']} | Intercept in m(x): m = J9 + K9·x |
+| K9 | {_P['params']['K9']} | Slope in m(x) |
+| x range | 0 – 20 mol% | Calibrated range for Excess Na₂O |
+            """)
         else:
-            _m_label = f"{_P.get('m', _P.get('m_d', ''))} (constant)"
-            _mol_conv = f"standard formula using MW_dry = {_P.get('MW_dry','')}"
-        st.markdown(f"""
+            _mode = _P.get('m_mode', 'constant')
+            if _mode == 'linear':
+                _m_label = f"{_P['m_d']} + {_P['m_slope']} · x_mol — linear calibration"
+                _mol_conv = (f"x_mol = {_P['mol_a']}·wt² + {_P['mol_b']}·wt  (empirical fit)"
+                             if 'mol_a' in _P else f"standard formula using MW_dry = {_P.get('MW_dry','')}")
+            else:
+                _m_label = f"{_P.get('m', _P.get('m_d', ''))} (constant)"
+                _mol_conv = f"standard formula using MW_dry = {_P.get('MW_dry','')}"
+            st.markdown(f"""
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | A | {_P['A']} | Pre-exponential term [log Pa·s] |
@@ -1763,7 +1800,7 @@ Viscosity models calibrated on specific compositions. Available:
 | d | {_P['d']} | Higher-order correction |
 | Tg_H₂O | {_P['Tg_H2O']} K | Glass transition of pure water |
 | wt% → mol% | {_mol_conv} | Conversion formula for H₂O content |
-        """)
+            """)
 
     # ── Helper functions (generic, work for any model) ───────────────────────
     def strm_wt_to_mol(h2o_wt, MW_dry):
@@ -1812,214 +1849,331 @@ Viscosity models calibrated on specific compositions. Available:
         return A + (12.0 - A) * ratio * np.exp((m / (12.0 - A) - 1.0) * (ratio - 1.0))
 
 
-    # ── Inputs layout: H2O full width, T controls above their panels ─────────
-    st.subheader("⚙️ Parameters")
+    # ── HPG8 model: special rendering ────────────────────────────────────────
+    if ACTIVE.get('model') == 'HPG8':
+        P = ACTIVE['params']
 
-    # H2O full width (spans all 3 panels)
-    h2o_input_s = st.text_input("H₂O contents (wt%, comma-separated):",
-                                 value="0, 0.5, 1, 2, 3, 4, 5")
-    try:
-        h2o_list_s = sorted(set([float(x.strip()) for x in h2o_input_s.split(',') if x.strip()]))
-    except:
-        h2o_list_s = [0.0, 1.0, 2.0, 3.0]
-    if 0.0 not in h2o_list_s:
-        h2o_list_s = [0.0] + h2o_list_s
+        def hpg8_A(x):  return P['J5'] - P['K5'] * P['L5']**x
+        def hpg8_Tg(x): return P['J7'] * (1+x)**P['K7']
+        def hpg8_m(x):  return P['J9'] + P['K9'] * x
+        def hpg8_visc(T_K, x):
+            A_x=hpg8_A(x); Tg_x=hpg8_Tg(x); m_x=hpg8_m(x); r=Tg_x/T_K
+            return A_x+(12-A_x)*r*np.exp((m_x/(12-A_x)-1)*(r-1))
 
-    # T min/max above panel 1 | blank above panel 2 | Fixed T above panel 3
-    _pc1, _pc2, _pc3 = st.columns(3)
-    with _pc1:
-        T_min_c = st.number_input("T min (°C):", value=700.0, step=50.0,
-                                   min_value=300.0, max_value=1600.0)
-        T_max_c = st.number_input("T max (°C):", value=1300.0, step=50.0,
-                                   min_value=300.0, max_value=1600.0)
-    with _pc2:
-        pass  # no input needed for Tg/m panel
-    with _pc3:
-        T_fixed_c = st.number_input("Fixed T for η vs H₂O (°C):", value=1050.0,
-                                     step=50.0, min_value=300.0, max_value=1600.0,
-                                     key='strm_T_fixed')
+        st.subheader("\u2699\ufe0f Parameters")
+        hc1,hc2,hc3,hc4 = st.columns(4)
+        with hc1:
+            hT_min = st.number_input("T min (\u00b0C):", value=400.0, step=50.0, min_value=300.0, max_value=1600.0, key='hpg_Tmin')
+        with hc2:
+            hT_max = st.number_input("T max (\u00b0C):", value=1200.0, step=50.0, min_value=300.0, max_value=1600.0, key='hpg_Tmax')
+        with hc3:
+            hx_input = st.text_input("Excess Na\u2082O (mol%, 0\u201320, comma-separated):", value=ACTIVE['x_default'], key='hpg_x')
+            try:
+                hx_list = sorted(set([max(0.0,min(20.0,float(v.strip()))) for v in hx_input.split(',') if v.strip()]))
+            except:
+                hx_list = [0,5,10,15,20]
+        with hc4:
+            hT_fixed = st.number_input("Fixed T for \u03b7 vs Excess Na\u2082O (\u00b0C):", value=800.0, step=50.0, min_value=300.0, max_value=1600.0, key='hpg_Tf')
 
-    if T_max_c <= T_min_c:
-        st.error("T max must be greater than T min.")
-        st.stop()
+        if hT_max <= hT_min: st.error("T max must be greater than T min."); st.stop()
 
-    T_arr  = np.linspace(T_min_c + 273.15, T_max_c + 273.15, 300)
-    cmap_s = plt.get_cmap('plasma', len(h2o_list_s))
+        hT_arr=np.linspace(hT_min+273.15,hT_max+273.15,300)
+        hx_dense=np.linspace(0,20,200)
+        hcmap=plt.get_cmap('plasma',max(len(hx_list),2))
+
+        hresults=[{'x':x,'A':round(hpg8_A(x),4),'Tg_K':round(hpg8_Tg(x),2),
+                   'Tg_C':round(hpg8_Tg(x)-273.15,2),'m':round(hpg8_m(x),3)} for x in hx_list]
+
+        hfig,(hax1,hax2,hax3)=plt.subplots(1,3,figsize=(18,5))
+
+        for i,x in enumerate(hx_list):
+            hax1.plot(hT_arr-273.15,[hpg8_visc(T,x) for T in hT_arr],
+                      color=hcmap(i),linewidth=2,label=f"{x:.0f} mol%")
+        hax1.set_xlabel("Temperature (\u00b0C)",fontsize=11)
+        hax1.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)",fontsize=11)
+        hax1.set_title("Viscosity vs Temperature\nHPG8+Na (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax1.legend(fontsize=8,loc='upper right',title='Excess Na\u2082O',title_fontsize=8)
+        hax1.grid(True,linestyle='--',alpha=0.4)
+
+        hax2b=hax2.twinx()
+        hl1,=hax2.plot(hx_dense,[hpg8_Tg(x)-273.15 for x in hx_dense],'steelblue',linewidth=2.5,label='Tg (\u00b0C)')
+        hax2.scatter([r['x'] for r in hresults],[r['Tg_C'] for r in hresults],
+                     color=[hcmap(i) for i in range(len(hresults))],s=60,zorder=5,edgecolors='black',linewidths=0.8)
+        hl2,=hax2b.plot(hx_dense,[hpg8_m(x) for x in hx_dense],'tomato',linewidth=2.5,linestyle='--',label='m')
+        hax2b.scatter([r['x'] for r in hresults],[r['m'] for r in hresults],
+                      color=[hcmap(i) for i in range(len(hresults))],s=50,zorder=5,edgecolors='black',linewidths=0.8,marker='D')
+        hax2.set_xlabel("Excess Na\u2082O (mol%)",fontsize=11)
+        hax2.set_ylabel("Tg (\u00b0C)",fontsize=11,color='steelblue')
+        hax2b.set_ylabel("Fragility index m",fontsize=11,color='tomato')
+        hax2.tick_params(axis='y',labelcolor='steelblue'); hax2b.tick_params(axis='y',labelcolor='tomato')
+        hax2.set_title("Tg and m vs Excess Na\u2082O\nHPG8+Na (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax2.legend(handles=[hl1,hl2],fontsize=8,loc='center right')
+        hax2.grid(True,linestyle='--',alpha=0.4)
+
+        hax3.plot(hx_dense,[hpg8_visc(hT_fixed+273.15,x) for x in hx_dense],'purple',linewidth=2.5)
+        hax3.scatter(hx_list,[hpg8_visc(hT_fixed+273.15,x) for x in hx_list],
+                     color=[hcmap(i) for i in range(len(hx_list))],s=70,zorder=5,edgecolors='black',linewidths=0.8)
+        hax3.set_xlabel("Excess Na\u2082O (mol%)",fontsize=11)
+        hax3.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)",fontsize=11)
+        hax3.set_title(f"Viscosity vs Excess Na\u2082O at {hT_fixed:.0f} \u00b0C\nHPG8+Na (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax3.grid(True,linestyle='--',alpha=0.4)
+
+        plt.tight_layout()
+        st.pyplot(hfig)
+
+        # Save panels using axis bounding boxes — no new figures needed
+        hbuf_all = io.BytesIO()
+        hfig.savefig(hbuf_all, format='png', dpi=200, bbox_inches='tight'); hbuf_all.seek(0)
+        def _bb(fig, ax):
+            _buf = io.BytesIO()
+            bb = ax.get_tightbbox(fig.canvas.get_renderer()).transformed(fig.dpi_scale_trans.inverted())
+            fig.savefig(_buf, format='png', dpi=200, bbox_inches=bb); _buf.seek(0); return _buf
+        _hb1=_bb(hfig,hax1); _hb2=_bb(hfig,hax2); _hb3=_bb(hfig,hax3)
+        plt.close(hfig)
+        _hcols=st.columns(4)
+        with _hcols[0]: st.download_button('⬇️ All figures',data=hbuf_all,file_name='HPG8_all.png',mime='image/png',key='dl_hpg_all')
+        with _hcols[1]: st.download_button('⬇️ Viscosity vs T',data=_hb1,file_name='HPG8_visc_vs_T.png',mime='image/png',key='dl_hpg_p0')
+        with _hcols[2]: st.download_button('⬇️ Tg & m',data=_hb2,file_name='HPG8_Tg_m.png',mime='image/png',key='dl_hpg_p1')
+        with _hcols[3]: st.download_button('⬇️ η vs Excess Na₂O',data=_hb3,file_name='HPG8_visc_vs_Na2O.png',mime='image/png',key='dl_hpg_p2')
+
+        st.subheader("\U0001f4ca Model parameters summary")
+        st.dataframe(pd.DataFrame(hresults).rename(columns={'x':'Excess Na\u2082O (mol%)','A':'log10\u03b7\u221e','Tg_K':'Tg (K)','Tg_C':'Tg (\u00b0C)','m':'m'}),use_container_width=True,hide_index=True)
+
+        st.subheader("\U0001f321\ufe0f Viscosity at specific conditions")
+        hc1b,hc2b=st.columns(2)
+        with hc1b: hT_sp=st.number_input("T (\u00b0C):",value=800.0,step=50.0,min_value=300.0,max_value=1600.0,key='hpg_Tsp')
+        with hc2b: hx_sp=st.number_input("Excess Na\u2082O (mol%, 0\u201320):",value=10.0,step=1.0,min_value=0.0,max_value=20.0,key='hpg_xsp')
+        hlv_sp=hpg8_visc(hT_sp+273.15,hx_sp)
+        st.metric("log\u2081\u2080(\u03b7 / Pa\u00b7s)",f"{hlv_sp:.3f}",help=f"A={hpg8_A(hx_sp):.4f} | Tg={hpg8_Tg(hx_sp)-273.15:.1f}\u00b0C | m={hpg8_m(hx_sp):.3f}")
+
+        hbuf_xl=io.BytesIO()
+        hrows=[{'Excess Na2O (mol%)':x,'T (\u00b0C)':Tc,'T (K)':Tc+273.15,
+                'log10_visc':round(hpg8_visc(Tc+273.15,x),4),'A':round(hpg8_A(x),4),
+                'Tg (K)':round(hpg8_Tg(x),2),'m':round(hpg8_m(x),3)}
+               for x in hx_list for Tc in np.arange(hT_min,hT_max+25,25)]
+        pd.DataFrame(hrows).to_excel(hbuf_xl,index=False,sheet_name='HPG8_Na_viscosity'); hbuf_xl.seek(0)
+        st.download_button("\u2b07\ufe0f Download Excel",data=hbuf_xl,file_name="HPG8_Na_viscosity.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="dl_hpg_xl")
+        st.caption("\U0001f4d6 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
+                   "HPG8+Na: [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868), *Chem. Geol.* "
+                   "Model calibrated for Excess Na\u2082O = 0\u201320 mol%.")
+
+    else:
+        # ── Inputs layout: H2O full width, T controls above their panels ─────────
+        st.subheader("⚙️ Parameters")
+
+        # H2O full width (spans all 3 panels)
+        h2o_input_s = st.text_input("H₂O contents (wt%, comma-separated):",
+                                     value="0, 0.5, 1, 2, 3, 4, 5")
+        try:
+            h2o_list_s = sorted(set([float(x.strip()) for x in h2o_input_s.split(',') if x.strip()]))
+        except:
+            h2o_list_s = [0.0, 1.0, 2.0, 3.0]
+        if 0.0 not in h2o_list_s:
+            h2o_list_s = [0.0] + h2o_list_s
+
+        # T min/max above panel 1 | blank above panel 2 | Fixed T above panel 3
+        _pc1, _pc2, _pc3 = st.columns(3)
+        with _pc1:
+            T_min_c = st.number_input("T min (°C):", value=700.0, step=50.0,
+                                       min_value=300.0, max_value=1600.0)
+            T_max_c = st.number_input("T max (°C):", value=1300.0, step=50.0,
+                                       min_value=300.0, max_value=1600.0)
+        with _pc2:
+            pass  # no input needed for Tg/m panel
+        with _pc3:
+            T_fixed_c = st.number_input("Fixed T for η vs H₂O (°C):", value=1050.0,
+                                         step=50.0, min_value=300.0, max_value=1600.0,
+                                         key='strm_T_fixed')
+
+        if T_max_c <= T_min_c:
+            st.error("T max must be greater than T min.")
+            st.stop()
+
+        T_arr  = np.linspace(T_min_c + 273.15, T_max_c + 273.15, 300)
+        cmap_s = plt.get_cmap('plasma', len(h2o_list_s))
 
 
-    # Compute all data
-    results_s = []
-    for i_h, h2o_wt in enumerate(h2o_list_s):
-        x_mol = wt_to_mol(h2o_wt, ACTIVE)
-        Tg_h  = strm_tg(x_mol, ACTIVE)
-        results_s.append({'h2o_wt': h2o_wt, 'x_mol': round(x_mol, 3),
-                          'Tg_K': round(Tg_h, 2), 'Tg_C': round(Tg_h - 273.15, 2)})
-    h2o_dense = np.linspace(0, max(max(h2o_list_s), 5.0) * 1.05, 200)
-    tg_curve  = [strm_tg(wt_to_mol(h, ACTIVE), ACTIVE) - 273.15 for h in h2o_dense]
-    h2o_vh    = np.linspace(0, max(max(h2o_list_s), 5.0), 200)
-    visc_vh   = [strm_myega(T_fixed_c+273.15,
-                             strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
-                             get_m(wt_to_mol(h, ACTIVE), ACTIVE), ACTIVE['A']) for h in h2o_vh]
-    visc_pts  = [strm_myega(T_fixed_c+273.15,
-                             strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
-                             get_m(wt_to_mol(h, ACTIVE), ACTIVE), ACTIVE['A']) for h in h2o_list_s]
+        # Compute all data
+        results_s = []
+        for i_h, h2o_wt in enumerate(h2o_list_s):
+            x_mol = wt_to_mol(h2o_wt, ACTIVE)
+            Tg_h  = strm_tg(x_mol, ACTIVE)
+            results_s.append({'h2o_wt': h2o_wt, 'x_mol': round(x_mol, 3),
+                              'Tg_K': round(Tg_h, 2), 'Tg_C': round(Tg_h - 273.15, 2)})
+        h2o_dense = np.linspace(0, max(max(h2o_list_s), 5.0) * 1.05, 200)
+        tg_curve  = [strm_tg(wt_to_mol(h, ACTIVE), ACTIVE) - 273.15 for h in h2o_dense]
+        h2o_vh    = np.linspace(0, max(max(h2o_list_s), 5.0), 200)
+        visc_vh   = [strm_myega(T_fixed_c+273.15,
+                                 strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
+                                 get_m(wt_to_mol(h, ACTIVE), ACTIVE), ACTIVE['A']) for h in h2o_vh]
+        visc_pts  = [strm_myega(T_fixed_c+273.15,
+                                 strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
+                                 get_m(wt_to_mol(h, ACTIVE), ACTIVE), ACTIVE['A']) for h in h2o_list_s]
 
-    # Single figure — 3 panels on one row
-    fig_s, (ax_visc, ax_tgm, ax_vh2) = plt.subplots(1, 3, figsize=(18, 5))
+        # Single figure — 3 panels on one row
+        fig_s, (ax_visc, ax_tgm, ax_vh2) = plt.subplots(1, 3, figsize=(18, 5))
 
-    # Panel 1: viscosity vs T
-    _has_linear_m = ACTIVE.get('m_mode', 'constant') != 'constant'
-    for i_h, h2o_wt in enumerate(h2o_list_s):
-        x_mol = wt_to_mol(h2o_wt, ACTIVE)
-        Tg_h  = strm_tg(x_mol, ACTIVE)
-        _m_h  = get_m(x_mol, ACTIVE)
-        visc  = [strm_myega(T, Tg_h, _m_h, ACTIVE['A']) for T in T_arr]
-        _lbl  = f"{h2o_wt:.1f} wt%" + (" (m lin.)" if _has_linear_m else "")
-        ax_visc.plot(T_arr - 273.15, visc, color=cmap_s(i_h), linewidth=2, label=_lbl)
+        # Panel 1: viscosity vs T
+        _has_linear_m = ACTIVE.get('m_mode', 'constant') != 'constant'
+        for i_h, h2o_wt in enumerate(h2o_list_s):
+            x_mol = wt_to_mol(h2o_wt, ACTIVE)
+            Tg_h  = strm_tg(x_mol, ACTIVE)
+            _m_h  = get_m(x_mol, ACTIVE)
+            visc  = [strm_myega(T, Tg_h, _m_h, ACTIVE['A']) for T in T_arr]
+            _lbl  = f"{h2o_wt:.1f} wt%" + (" (m lin.)" if _has_linear_m else "")
+            ax_visc.plot(T_arr - 273.15, visc, color=cmap_s(i_h), linewidth=2, label=_lbl)
+            if _has_linear_m:
+                visc_mc = [strm_myega(T, Tg_h, ACTIVE['m_d'], ACTIVE['A']) for T in T_arr]
+                ax_visc.plot(T_arr - 273.15, visc_mc, color=cmap_s(i_h), linewidth=1.5,
+                             linestyle=':', alpha=0.7,
+                             label=f"{h2o_wt:.1f} wt% (m const.)" if i_h == 0 else "_")
+        ax_visc.set_xlabel("Temperature (°C)", fontsize=11)
+        ax_visc.set_ylabel("log₁₀(η / Pa·s)", fontsize=11)
+        ax_visc.set_title(f"Viscosity vs Temperature\n{ACTIVE['name']}",
+                           fontsize=11, fontweight='bold')
+        ax_visc.legend(fontsize=7, loc='upper right')
+        ax_visc.grid(True, linestyle='--', alpha=0.4)
+
+        # Panel 2: Tg and m vs H2O (twin axes, m constant)
+        ax_tgm2 = ax_tgm.twinx()
+        l1, = ax_tgm.plot(h2o_dense, tg_curve, 'steelblue', linewidth=2.5, label='Tg (\u00b0C)')
+        ax_tgm.scatter([r['h2o_wt'] for r in results_s], [r['Tg_C'] for r in results_s],
+                       color=[cmap_s(i) for i in range(len(results_s))],
+                       s=60, zorder=5, edgecolors='black', linewidths=0.8)
+        _m_d_val = ACTIVE.get('m_d', ACTIVE.get('m', 35.0))
         if _has_linear_m:
-            visc_mc = [strm_myega(T, Tg_h, ACTIVE['m_d'], ACTIVE['A']) for T in T_arr]
-            ax_visc.plot(T_arr - 273.15, visc_mc, color=cmap_s(i_h), linewidth=1.5,
-                         linestyle=':', alpha=0.7,
-                         label=f"{h2o_wt:.1f} wt% (m const.)" if i_h == 0 else "_")
-    ax_visc.set_xlabel("Temperature (°C)", fontsize=11)
-    ax_visc.set_ylabel("log₁₀(η / Pa·s)", fontsize=11)
-    ax_visc.set_title(f"Viscosity vs Temperature\n{ACTIVE['name']}",
-                       fontsize=11, fontweight='bold')
-    ax_visc.legend(fontsize=7, loc='upper right')
-    ax_visc.grid(True, linestyle='--', alpha=0.4)
+            m_curve_dense = [get_m(wt_to_mol(h, ACTIVE), ACTIVE) for h in h2o_dense]
+            l2, = ax_tgm2.plot(h2o_dense, m_curve_dense, color='tomato', linewidth=2.5,
+                                linestyle='--', label=f"m linear: {ACTIVE['m_d']} + {ACTIVE['m_slope']:.5f}·x")
+            _m_pts = [get_m(wt_to_mol(r['h2o_wt'], ACTIVE), ACTIVE) for r in results_s]
+            ax_tgm2.scatter([r['h2o_wt'] for r in results_s], _m_pts,
+                            color=[cmap_s(i) for i in range(len(results_s))],
+                            s=50, zorder=5, edgecolors='black', linewidths=0.7, marker='D')
+            l2b, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [_m_d_val, _m_d_val],
+                                 color='darkorange', linewidth=1.8, linestyle=':',
+                                 label=f"m constant = {_m_d_val}")
+            _legend_handles = [l1, l2, l2b]
+        else:
+            l2, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [_m_d_val, _m_d_val],
+                                color='tomato', linewidth=2.5, linestyle='--',
+                                label=f"m = {_m_d_val} (constant)")
+            _legend_handles = [l1, l2]
+        ax_tgm2.set_ylim(min(_m_d_val*0.85, 20), max(_m_d_val*1.15, 50))
+        ax_tgm.set_xlabel("H\u2082O (wt%)", fontsize=11)
+        ax_tgm.set_ylabel("Tg (\u00b0C)", fontsize=11, color='steelblue')
+        ax_tgm2.set_ylabel("Fragility index m", fontsize=11, color='tomato')
+        ax_tgm.tick_params(axis='y', labelcolor='steelblue')
+        ax_tgm2.tick_params(axis='y', labelcolor='tomato')
+        ax_tgm.set_title(f"Tg and m vs H\u2082O\n{ACTIVE['name']}",
+                          fontsize=11, fontweight='bold')
+        ax_tgm.legend(handles=_legend_handles, fontsize=8, loc='lower left')
+        ax_tgm.grid(True, linestyle='--', alpha=0.4)
 
-    # Panel 2: Tg and m vs H2O (twin axes, m constant)
-    ax_tgm2 = ax_tgm.twinx()
-    l1, = ax_tgm.plot(h2o_dense, tg_curve, 'steelblue', linewidth=2.5, label='Tg (\u00b0C)')
-    ax_tgm.scatter([r['h2o_wt'] for r in results_s], [r['Tg_C'] for r in results_s],
-                   color=[cmap_s(i) for i in range(len(results_s))],
-                   s=60, zorder=5, edgecolors='black', linewidths=0.8)
-    _m_d_val = ACTIVE.get('m_d', ACTIVE.get('m', 35.0))
-    if _has_linear_m:
-        m_curve_dense = [get_m(wt_to_mol(h, ACTIVE), ACTIVE) for h in h2o_dense]
-        l2, = ax_tgm2.plot(h2o_dense, m_curve_dense, color='tomato', linewidth=2.5,
-                            linestyle='--', label=f"m linear: {ACTIVE['m_d']} + {ACTIVE['m_slope']:.5f}·x")
-        _m_pts = [get_m(wt_to_mol(r['h2o_wt'], ACTIVE), ACTIVE) for r in results_s]
-        ax_tgm2.scatter([r['h2o_wt'] for r in results_s], _m_pts,
-                        color=[cmap_s(i) for i in range(len(results_s))],
-                        s=50, zorder=5, edgecolors='black', linewidths=0.7, marker='D')
-        l2b, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [_m_d_val, _m_d_val],
-                             color='darkorange', linewidth=1.8, linestyle=':',
-                             label=f"m constant = {_m_d_val}")
-        _legend_handles = [l1, l2, l2b]
-    else:
-        l2, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [_m_d_val, _m_d_val],
-                            color='tomato', linewidth=2.5, linestyle='--',
-                            label=f"m = {_m_d_val} (constant)")
-        _legend_handles = [l1, l2]
-    ax_tgm2.set_ylim(min(_m_d_val*0.85, 20), max(_m_d_val*1.15, 50))
-    ax_tgm.set_xlabel("H\u2082O (wt%)", fontsize=11)
-    ax_tgm.set_ylabel("Tg (\u00b0C)", fontsize=11, color='steelblue')
-    ax_tgm2.set_ylabel("Fragility index m", fontsize=11, color='tomato')
-    ax_tgm.tick_params(axis='y', labelcolor='steelblue')
-    ax_tgm2.tick_params(axis='y', labelcolor='tomato')
-    ax_tgm.set_title(f"Tg and m vs H\u2082O\n{ACTIVE['name']}",
-                      fontsize=11, fontweight='bold')
-    ax_tgm.legend(handles=_legend_handles, fontsize=8, loc='lower left')
-    ax_tgm.grid(True, linestyle='--', alpha=0.4)
+        # Panel 3: viscosity vs H2O at fixed T
+        _lbl_vh = 'm linear' if _has_linear_m else 'm'
+        ax_vh2.plot(h2o_vh, visc_vh, 'purple', linewidth=2.5, label=_lbl_vh)
+        ax_vh2.scatter(h2o_list_s, visc_pts,
+                       color=[cmap_s(i) for i in range(len(h2o_list_s))],
+                       s=70, zorder=5, edgecolors='black', linewidths=0.8)
+        if _has_linear_m:
+            visc_vh_mc = [strm_myega(T_fixed_c+273.15,
+                                      strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
+                                      ACTIVE['m_d'], ACTIVE['A']) for h in h2o_vh]
+            ax_vh2.plot(h2o_vh, visc_vh_mc, 'darkorange', linewidth=1.8,
+                        linestyle=':', label=f"m constant = {ACTIVE['m_d']}")
+            ax_vh2.legend(fontsize=8, loc='upper right')
+        ax_vh2.set_xlabel("H\u2082O (wt%)", fontsize=11)
+        ax_vh2.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)", fontsize=11)
+        ax_vh2.set_title(f"Viscosity vs H\u2082O at {T_fixed_c:.0f} \u00b0C\n{ACTIVE['name']}",
+                         fontsize=11, fontweight='bold')
+        ax_vh2.grid(True, linestyle='--', alpha=0.4)
 
-    # Panel 3: viscosity vs H2O at fixed T
-    _lbl_vh = 'm linear' if _has_linear_m else 'm'
-    ax_vh2.plot(h2o_vh, visc_vh, 'purple', linewidth=2.5, label=_lbl_vh)
-    ax_vh2.scatter(h2o_list_s, visc_pts,
-                   color=[cmap_s(i) for i in range(len(h2o_list_s))],
-                   s=70, zorder=5, edgecolors='black', linewidths=0.8)
-    if _has_linear_m:
-        visc_vh_mc = [strm_myega(T_fixed_c+273.15,
-                                  strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
-                                  ACTIVE['m_d'], ACTIVE['A']) for h in h2o_vh]
-        ax_vh2.plot(h2o_vh, visc_vh_mc, 'darkorange', linewidth=1.8,
-                    linestyle=':', label=f"m constant = {ACTIVE['m_d']}")
-        ax_vh2.legend(fontsize=8, loc='upper right')
-    ax_vh2.set_xlabel("H\u2082O (wt%)", fontsize=11)
-    ax_vh2.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)", fontsize=11)
-    ax_vh2.set_title(f"Viscosity vs H\u2082O at {T_fixed_c:.0f} \u00b0C\n{ACTIVE['name']}",
-                     fontsize=11, fontweight='bold')
-    ax_vh2.grid(True, linestyle='--', alpha=0.4)
+        plt.tight_layout()
+        st.pyplot(fig_s)
 
-    plt.tight_layout()
-    st.pyplot(fig_s)
+        # Save panels using axis bounding boxes — no new figures needed
+        buf_fig_s = io.BytesIO()
+        fig_s.savefig(buf_fig_s, format='png', dpi=200, bbox_inches='tight'); buf_fig_s.seek(0)
+        def _bbg(ax):
+            _buf = io.BytesIO()
+            bb = ax.get_tightbbox(fig_s.canvas.get_renderer()).transformed(fig_s.dpi_scale_trans.inverted())
+            fig_s.savefig(_buf, format='png', dpi=200, bbox_inches=bb); _buf.seek(0); return _buf
+        _bp0=_bbg(ax_visc); _bp1=_bbg(ax_tgm); _bp2=_bbg(ax_vh2)
+        plt.close(fig_s)
+        _sname=ACTIVE['name'].replace(' ','_')
+        _scols=st.columns(4)
+        with _scols[0]: st.download_button('⬇️ All figures',data=buf_fig_s,file_name=f'{_sname}_all.png',mime='image/png',key='dl_strm_all')
+        with _scols[1]: st.download_button('⬇️ Viscosity vs T',data=_bp0,file_name=f'{_sname}_visc_vs_T.png',mime='image/png',key='dl_strm_p0')
+        with _scols[2]: st.download_button('⬇️ Tg & m vs H₂O',data=_bp1,file_name=f'{_sname}_Tg_m.png',mime='image/png',key='dl_strm_p1')
+        with _scols[3]: st.download_button('⬇️ η vs H₂O',data=_bp2,file_name=f'{_sname}_visc_vs_H2O.png',mime='image/png',key='dl_strm_p2')
 
-    # Download figure button right under the plot
-    buf_fig_s = io.BytesIO()
-    fig_s.savefig(buf_fig_s, format='png', dpi=200, bbox_inches='tight')
-    buf_fig_s.seek(0)
-    plt.close(fig_s)
-    st.download_button("\u2b07\ufe0f Download figures (PNG)", data=buf_fig_s,
-                       file_name=f"{ACTIVE['name'].replace(' ', '_')}_viscosity_plots.png", mime="image/png",
-                       key="dl_strm_fig")
+            # ── Summary table ─────────────────────────────────────────────────────────
+        st.subheader("📊 Tg summary")
+        df_tg = pd.DataFrame(results_s)
+        df_tg.columns = ['H₂O (wt%)', 'H₂O (mol%)', 'Tg (K)', 'Tg (°C)']
+        st.dataframe(df_tg, use_container_width=True, hide_index=True)
 
-        # ── Summary table ─────────────────────────────────────────────────────────
-    st.subheader("📊 Tg summary")
-    df_tg = pd.DataFrame(results_s)
-    df_tg.columns = ['H₂O (wt%)', 'H₂O (mol%)', 'Tg (K)', 'Tg (°C)']
-    st.dataframe(df_tg, use_container_width=True, hide_index=True)
+        # ── Viscosity at specific T and H2O ───────────────────────────────────────
+        st.subheader("🌡️ Viscosity at specific conditions")
+        col_sp1, col_sp2 = st.columns(2)
+        with col_sp1:
+            T_spec = st.number_input("Temperature (°C):", value=1100.0, step=50.0,
+                                      min_value=300.0, max_value=1600.0, key='strm_T_spec')
+        with col_sp2:
+            h2o_spec = st.number_input("H₂O (wt%):", value=1.0, step=0.5,
+                                        min_value=0.0, max_value=10.0, key='strm_h2o_spec')
+        x_mol_sp   = wt_to_mol(h2o_spec, ACTIVE)
+        Tg_sp      = strm_tg(x_mol_sp, ACTIVE)
+        m_sp_var   = get_m(x_mol_sp, ACTIVE)           # linear or constant
+        m_sp_cst   = ACTIVE.get('m_d', ACTIVE.get('m', 35.0))  # always constant
+        lv_var     = strm_myega(T_spec + 273.15, Tg_sp, m_sp_var, ACTIVE['A'])
+        lv_cst     = strm_myega(T_spec + 273.15, Tg_sp, m_sp_cst, ACTIVE['A'])
+        _has_lin   = ACTIVE.get('m_mode', 'constant') != 'constant'
 
-    # ── Viscosity at specific T and H2O ───────────────────────────────────────
-    st.subheader("🌡️ Viscosity at specific conditions")
-    col_sp1, col_sp2 = st.columns(2)
-    with col_sp1:
-        T_spec = st.number_input("Temperature (°C):", value=1100.0, step=50.0,
-                                  min_value=300.0, max_value=1600.0, key='strm_T_spec')
-    with col_sp2:
-        h2o_spec = st.number_input("H₂O (wt%):", value=1.0, step=0.5,
-                                    min_value=0.0, max_value=10.0, key='strm_h2o_spec')
-    x_mol_sp   = wt_to_mol(h2o_spec, ACTIVE)
-    Tg_sp      = strm_tg(x_mol_sp, ACTIVE)
-    m_sp_var   = get_m(x_mol_sp, ACTIVE)           # linear or constant
-    m_sp_cst   = ACTIVE.get('m_d', ACTIVE.get('m', 35.0))  # always constant
-    lv_var     = strm_myega(T_spec + 273.15, Tg_sp, m_sp_var, ACTIVE['A'])
-    lv_cst     = strm_myega(T_spec + 273.15, Tg_sp, m_sp_cst, ACTIVE['A'])
-    _has_lin   = ACTIVE.get('m_mode', 'constant') != 'constant'
+        if _has_lin:
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                st.metric("log₁₀(η / Pa·s) — m linear",  f"{lv_var:.3f}",
+                          help=f"m = {m_sp_var:.3f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
+            with col_v2:
+                st.metric("log₁₀(η / Pa·s) — m constant", f"{lv_cst:.3f}",
+                          help=f"m = {m_sp_cst:.2f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
+        else:
+            visc_pa = 10**lv_var
+            st.metric("log₁₀(η / Pa·s)", f"{lv_var:.3f}",
+                      help=f"m = {m_sp_var:.2f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
 
-    if _has_lin:
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            st.metric("log₁₀(η / Pa·s) — m linear",  f"{lv_var:.3f}",
-                      help=f"m = {m_sp_var:.3f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
-        with col_v2:
-            st.metric("log₁₀(η / Pa·s) — m constant", f"{lv_cst:.3f}",
-                      help=f"m = {m_sp_cst:.2f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
-    else:
-        visc_pa = 10**lv_var
-        st.metric("log₁₀(η / Pa·s)", f"{lv_var:.3f}",
-                  help=f"m = {m_sp_var:.2f} | H₂O = {x_mol_sp:.2f} mol% | Tg = {Tg_sp-273.15:.1f} °C")
+        # ── Download ──────────────────────────────────────────────────────────────
+        st.subheader("📥 Download results")
+        buf_s = io.BytesIO()
+        T_step_dl = 25.0
+        T_dl = np.arange(T_min_c, T_max_c + T_step_dl, T_step_dl)
+        rows_dl = []
+        for h2o_wt in h2o_list_s:
+            x_mol = wt_to_mol(h2o_wt, ACTIVE)
+            Tg_h  = strm_tg(x_mol, ACTIVE)
+            for Tc in T_dl:
+                lv = strm_myega(Tc + 273.15, Tg_h, ACTIVE.get('m_d', ACTIVE.get('m', 35.0)), ACTIVE['A'])
+                rows_dl.append({'H2O (wt%)': h2o_wt, 'H2O (mol%)': round(x_mol, 3),
+                                'T (°C)': Tc, 'T (K)': Tc + 273.15,
+                                'log10_visc': round(lv, 4)})
+        pd.DataFrame(rows_dl).to_excel(buf_s, index=False, sheet_name='Stromboli_viscosity')
+        buf_s.seek(0)
+        st.download_button("⬇️ Download Excel", data=buf_s,
+                           file_name=f"{ACTIVE['name'].replace(' ', '_')}_viscosity.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           key="dl_strm_xl")
 
-    # ── Download ──────────────────────────────────────────────────────────────
-    st.subheader("📥 Download results")
-    buf_s = io.BytesIO()
-    T_step_dl = 25.0
-    T_dl = np.arange(T_min_c, T_max_c + T_step_dl, T_step_dl)
-    rows_dl = []
-    for h2o_wt in h2o_list_s:
-        x_mol = wt_to_mol(h2o_wt, ACTIVE)
-        Tg_h  = strm_tg(x_mol, ACTIVE)
-        for Tc in T_dl:
-            lv = strm_myega(Tc + 273.15, Tg_h, ACTIVE.get('m_d', ACTIVE.get('m', 35.0)), ACTIVE['A'])
-            rows_dl.append({'H2O (wt%)': h2o_wt, 'H2O (mol%)': round(x_mol, 3),
-                            'T (°C)': Tc, 'T (K)': Tc + 273.15,
-                            'log10_visc': round(lv, 4)})
-    pd.DataFrame(rows_dl).to_excel(buf_s, index=False, sheet_name='Stromboli_viscosity')
-    buf_s.seek(0)
-    st.download_button("⬇️ Download Excel", data=buf_s,
-                       file_name=f"{ACTIVE['name'].replace(' ', '_')}_viscosity.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                       key="dl_strm_xl")
-
-    if 'Di Genova' in comp_model:
-        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-                   "Peridotite: [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407), *Chem. Geol.* "
-                   "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
-    elif "472 CE" in comp_model:
-        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-                   "Vesuvio parameters: [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126), *Earth Planet. Sci. Lett.* "
-                   "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
-    else:
-        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-                   "Stromboli parameters: [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w), *Contrib. Mineral. Petrol.* 178, 45. "
-                   "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+        if 'Di Genova' in comp_model:
+            st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                       "Peridotite: [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407), *Chem. Geol.* "
+                       "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+        elif "472 CE" in comp_model:
+            st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                       "Vesuvio parameters: [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126), *Earth Planet. Sci. Lett.* "
+                       "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+        else:
+            st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                       "Stromboli parameters: [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w), *Contrib. Mineral. Petrol.* 178, 45. "
+                       "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
