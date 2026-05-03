@@ -275,7 +275,7 @@ with st.sidebar:
         "**Select mode:**",
         [
             "🏠 Home",
-            "🔷 Viscosity Calculator",
+            "🔥 Viscosity Calculator",
             "💧 Anhydrous and Hydrous Modelling",
             "🌋 Specific Composition Models",
         ],
@@ -284,7 +284,7 @@ with st.sidebar:
     st.divider()
     if mode == "🌋 Specific Composition Models":
         pass  # description shown in main area
-    elif mode == "🔷 Viscosity Calculator":
+    elif mode == "🔥 Viscosity Calculator":
         st.markdown("""
 **Input format**
 
@@ -331,7 +331,8 @@ Langhammer et al. (2021), *GGG*
         """)
     elif mode == "🌋 Specific Composition Models":
         st.markdown("📖 References shown below each model.")
-    st.divider()
+    if mode != "🌋 Specific Composition Models":
+        st.divider()
     st.markdown("**Questions?** ✉️ [danilo.digenova@cnr.it](mailto:danilo.digenova@cnr.it)")
 
 # ==============================================================================
@@ -348,7 +349,7 @@ if mode == "🏠 Home":
     _c1,_c2,_c3 = st.columns(3)
     with _c1:
         st.markdown("""
-**🔷 Viscosity Calculator**  
+**🔥 Viscosity Calculator**  
 Calculate viscosity for any silicate melt composition using the Langhammer et al. (2022) ANN.  
 Upload a CSV, visualise MYEGA curves, TAS diagram, and download Excel outputs.
         """)
@@ -431,9 +432,9 @@ Please cite the relevant model references shown in each module and acknowledge:
 # ==============================================================================
 # MODE 1 — VISCOSITY CALCULATOR
 # ==============================================================================
-if mode == "🔷 Viscosity Calculator":
+if mode == "🔥 Viscosity Calculator":
 
-    st.title("🔷 Viscosity Calculator")
+    st.title("🔥 Viscosity Calculator")
     st.markdown("Calculate silicate melt viscosity from composition using the **Langhammer et al. (2022)** ANN model. Upload a CSV with multiple samples and download MYEGA curves.")
 
     input_method_1 = st.radio("**How do you want to provide the composition?**",
@@ -1774,8 +1775,9 @@ Viscosity models calibrated on specific compositions:
 
 - **Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w)
 - **Peridotite** — [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407)
-- **Anhydrous metaluminous/peralkaline haplogranite** — [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868)
 - **Anhydrous andesite** — [Valdivia et al. (2025)](https://www.nature.com/articles/s43247-025-02424-9)
+- **Colli Albani tephriphonolite** — [Fanesi et al. (2025)](https://www.sciencedirect.com/science/article/pii/S0377027325000125)
+- **Anhydrous metaluminous/peralkaline haplogranite** — [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868)
 - **Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
     """)
 
@@ -1783,8 +1785,9 @@ Viscosity models calibrated on specific compositions:
     comp_model = st.selectbox("Select composition model:", [
         "Stromboli basalt — Valdivia et al. (2023)",
         "Peridotite — Di Genova et al. (2023)",
-        "Anhydrous metaluminous and peralkaline haplogranitic melts — Stopponi et al. (2026)",
         "Anhydrous andesite — Valdivia et al. (2025)",
+        "Colli Albani tephriphonolite — Fanesi et al. (2025)",
+        "Anhydrous metaluminous and peralkaline haplogranitic melts — Stopponi et al. (2026)",
         "Vesuvio phonotephrite (472 CE) — Dominijanni et al. (2026)",
     ])
 
@@ -1877,8 +1880,29 @@ Viscosity models calibrated on specific compositions:
         'AND0':      AND0_comp,
     }
 
+    # ── Colli Albani tephriphonolite (Fanesi et al. 2025, JVGR) ─────────────
+    PNR = {
+        'name':    'Colli Albani tephriphonolite',
+        'ref':     'Fanesi et al. (2025)',
+        'A':       -2.93,
+        'Tg_d':    899.95,   # K, anhydrous Tg
+        'm_d':     31.10585, # anhydrous fragility index (at H2O=0)
+        'm_slope':  0.2709,  # dm/dx [mol%^-1] — positive: m increases with H2O
+        'b':       0.25557,
+        'c':       1.1576,
+        'd':       -1.34585,
+        'Tg_H2O':  136.0,    # K
+        # Quadratic wt%→mol% conversion (Excel cell C8):
+        # x_mol = mol_a*wt^2 + mol_b*wt + mol_c
+        'mol_a':   -0.0854,
+        'mol_b':    3.7366,
+        'mol_c':    0.0105,
+        'm_mode':  'linear',
+    }
+
     ACTIVE = (HPG8 if 'Stopponi' in comp_model or 'haplogranitic' in comp_model
-              else AND if '2025' in comp_model or 'Anhydrous andesite' in comp_model
+              else AND if '2025' in comp_model and 'Valdivia' in comp_model
+              else PNR if 'Fanesi' in comp_model or 'Colli Albani' in comp_model
               else PRD if 'Di Genova' in comp_model
               else POX if 'Dominijanni' in comp_model or '472 CE' in comp_model
               else STRM)
@@ -1944,7 +1968,7 @@ Viscosity models calibrated on specific compositions:
         Otherwise: generic formula using MW_dry.
         """
         if 'mol_a' in p:
-            return p['mol_a'] * h2o_wt**2 + p['mol_b'] * h2o_wt
+            return p['mol_a'] * h2o_wt**2 + p['mol_b'] * h2o_wt + p.get('mol_c', 0.0)
         mw = p.get('MW_dry')
         if mw:
             return strm_wt_to_mol(h2o_wt, mw)
@@ -2410,15 +2434,19 @@ Viscosity models calibrated on specific compositions:
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            key="dl_strm_xl")
 
-        if 'Di Genova' in comp_model:
-            st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-                       "Peridotite: [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407), *Chem. Geol.* "
-                       "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
-        elif "472 CE" in comp_model:
-            st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-                       "Vesuvio parameters: [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126), *Earth Planet. Sci. Lett.* "
-                       "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
-        else:
-            st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-                       "Stromboli parameters: [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w), *Contrib. Mineral. Petrol.* 178, 45. "
-                       "Tg(H₂O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    if 'Fanesi' in comp_model or 'Colli Albani' in comp_model:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
+                   "Colli Albani: [Fanesi et al. (2025)](https://www.sciencedirect.com/science/article/pii/S0377027325000125), *J. Volcanol. Geotherm. Res.* "
+                   "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    elif 'Di Genova' in comp_model:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
+                   "Peridotite: [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407), *Chem. Geol.* "
+                   "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    elif '472 CE' in comp_model:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
+                   "Vesuvio: [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126), *Earth Planet. Sci. Lett.* "
+                   "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    else:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
+                   "Stromboli: [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w), *Contrib. Mineral. Petrol.* 178, 45. "
+                   "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
