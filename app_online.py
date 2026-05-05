@@ -1986,16 +1986,16 @@ Viscosity models calibrated on specific compositions:
                 st.markdown(f"""
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| A (fixed) | {_P['A_fixed']} | Pre-exponential term [log Pa·s] — constant (Sheet 1) |
-| A (fitted) | L2 − L3·L4^x | A varies with H₂O mol% (Sheet 2): L2={_P['L2']}, L3={_P['L3']}, L4={_P['L4']} |
+| A (fixed) | {_P['A_fixed']} | Pre-exponential term [log Pa·s] — held constant |
+| A (fitted) | L2 − L3·L4^x | A varies with H₂O: L2={_P['L2']}, L3={_P['L3']}, L4={_P['L4']}; x = H₂O (mol%) |
 | Tg_dry | {_P['Tg_d']} K ({_P['Tg_d']-273.15:.1f} °C) | Anhydrous glass transition temperature |
 | m_dry | {_P['m_dry']} | Anhydrous fragility index |
-| m slope | {_P['m_slope']} | m(x) = m_dry + {_P['m_slope']}·x  (x in mol%) |
+| m(x) | m_dry + {_P['m_slope']}·x | x = H₂O (mol%): fragility increases linearly with dissolved water |
 | b | {_P['b']} | Gordon-Taylor mixing parameter |
 | c | {_P['c']} | Excess mixing term |
 | d | {_P['d']} | Higher-order correction |
 | Tg_H₂O | {_P['Tg_H2O']} K | Glass transition of pure water |
-| wt% → mol% | x = {_P['mol_slope']}·wt% | Linear conversion |
+| wt% → mol% | H₂O (mol%) = {_P['mol_slope']} × H₂O (wt%) | Linear conversion calibrated on AMS-B1 |
                 """)
             else:  # AND
                 st.markdown("""
@@ -2242,6 +2242,9 @@ Viscosity models calibrated on specific compositions:
         aax2.set_title("Tg and m vs H₂O\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11,fontweight='bold')
         aax2.legend(handles=[l1,l2],fontsize=8,loc='center right')
         aax2.grid(True,linestyle='--',alpha=0.4)
+        # Secondary x-axis in mol%
+        _ax2_mol = aax2.secondary_xaxis('top', functions=(lambda w: P['mol_slope']*w, lambda m: m/P['mol_slope']))
+        _ax2_mol.set_xlabel("H₂O (mol%)", fontsize=10, color='#555555')
 
         # Panel 3: visc vs H2O at fixed T — both A
         aax3.plot(ax_dense,[ams_visc(aT_fix+273.15,x,True) for x in ax_mol_dense],
@@ -2257,6 +2260,9 @@ Viscosity models calibrated on specific compositions:
         aax3.set_title(f"Viscosity vs H₂O at {aT_fix:.0f} °C\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11,fontweight='bold')
         aax3.legend(fontsize=8,loc='upper right')
         aax3.grid(True,linestyle='--',alpha=0.4)
+        # Secondary x-axis in mol%
+        _ax3_mol = aax3.secondary_xaxis('top', functions=(lambda w: P['mol_slope']*w, lambda m: m/P['mol_slope']))
+        _ax3_mol.set_xlabel("H₂O (mol%)", fontsize=10, color='#555555')
 
         plt.tight_layout(); st.pyplot(afig)
 
