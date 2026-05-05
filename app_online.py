@@ -1778,6 +1778,7 @@ Viscosity models calibrated on specific compositions:
 - **Anhydrous andesite** — [Valdivia et al. (2025)](https://www.nature.com/articles/s43247-025-02424-9)
 - **Colli Albani tephriphonolite** — [Fanesi et al. (2025)](https://www.sciencedirect.com/science/article/pii/S0377027325000125)
 - **Anhydrous metaluminous/peralkaline haplogranite** — [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868)
+- **Agnano-Monte Spina trachyte (Campi Flegrei)** — [Abeykoon et al. (2026)](https://agupubs.onlinelibrary.wiley.com/journal/21699356)
 - **Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
     """)
 
@@ -1788,6 +1789,7 @@ Viscosity models calibrated on specific compositions:
         "Anhydrous andesite — Valdivia et al. (2025)",
         "Colli Albani tephriphonolite — Fanesi et al. (2025)",
         "Anhydrous metaluminous and peralkaline haplogranitic melts — Stopponi et al. (2026)",
+        "Agnano-Monte Spina trachyte — Abeykoon et al. (2026)",
         "Vesuvio phonotephrite (472 CE) — Dominijanni et al. (2026)",
     ])
 
@@ -1925,16 +1927,48 @@ Viscosity models calibrated on specific compositions:
             'MgO':2.23,'CaO':5.59,'Na2O':2.28,'K2O':9.48,'P2O5':0.37,'H2O':0.00}],
     }
 
+    # ── Agnano-Monte Spina trachyte (Abeykoon et al. 2026, JGR Solid Earth) ───
+    AMS = {
+        'name':    'Agnano-Monte Spina trachyte (Campi Flegrei)',
+        'ref':     'Abeykoon et al. (2026)',
+        'model':   'AMS',
+        # Shared Tg parameters (both sheets)
+        'Tg_d':    905.35,   # K
+        'b':       0.12853,
+        'c':       1.45818,
+        'd':       -1.43767,
+        'Tg_H2O':  136.0,    # K
+        # m parameters (same for both sheets)
+        'm_dry':   23.63,
+        'm_slope': 0.32711,  # m(x) = m_dry + m_slope * x_mol
+        # A_fixed sheet: A = constant
+        'A_fixed': -5.01254,
+        # A_fitted sheet: A(x) = L2 - L3*L4^x_mol
+        'L2': -2.22085,
+        'L3':  2.85002,
+        'L4':  0.3984,
+        # wt% → mol%: x_mol = 3.4231 * h2o_wt
+        'mol_slope': 3.4231,
+        'x_label':  'H₂O (wt%)',
+        'x_min':    0.0,
+        'x_max':    5.0,
+        'x_default': '0, 0.5, 1, 2, 3, 4, 5',
+        'composition': [{'label': 'AMS-B1',
+            'SiO2':60.23,'TiO2':0.54,'Al2O3':18.39,'FeOtot':4.12,'MnO':0.17,
+            'MgO':1.23,'CaO':3.28,'Na2O':3.97,'K2O':7.84,'P2O5':0.22,'H2O':0.00}],
+    }
+
     ACTIVE = (HPG8 if 'Stopponi' in comp_model or 'haplogranitic' in comp_model
-              else AND if '2025' in comp_model and 'Valdivia' in comp_model
-              else PNR if 'Fanesi' in comp_model or 'Colli Albani' in comp_model
-              else PRD if 'Di Genova' in comp_model
-              else POX if 'Dominijanni' in comp_model or '472 CE' in comp_model
+              else AMS  if 'Abeykoon' in comp_model or 'Agnano' in comp_model
+              else AND  if '2025' in comp_model and 'Valdivia' in comp_model
+              else PNR  if 'Fanesi' in comp_model or 'Colli Albani' in comp_model
+              else PRD  if 'Di Genova' in comp_model
+              else POX  if 'Dominijanni' in comp_model or '472 CE' in comp_model
               else STRM)
 
     with st.expander("📋 Model parameters"):
         _P = ACTIVE
-        if _P.get('model') in ('HPG8', 'AND'):
+        if _P.get('model') in ('HPG8', 'AND', 'AMS'):
             if _P.get('model') == 'HPG8':
                 st.markdown(f"""
 | Parameter | Value | Description |
@@ -1947,6 +1981,21 @@ Viscosity models calibrated on specific compositions:
 | J9 | {_P['params']['J9']} | Intercept in m(x): m = J9 + K9·x |
 | K9 | {_P['params']['K9']} | Slope in m(x) |
 | x range | 0 – 20 mol% | Calibrated range for Excess Na₂O |
+                """)
+            elif _P.get('model') == 'AMS':
+                st.markdown(f"""
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| A (fixed) | {_P['A_fixed']} | Pre-exponential term [log Pa·s] — constant (Sheet 1) |
+| A (fitted) | L2 − L3·L4^x | A varies with H₂O mol% (Sheet 2): L2={_P['L2']}, L3={_P['L3']}, L4={_P['L4']} |
+| Tg_dry | {_P['Tg_d']} K ({_P['Tg_d']-273.15:.1f} °C) | Anhydrous glass transition temperature |
+| m_dry | {_P['m_dry']} | Anhydrous fragility index |
+| m slope | {_P['m_slope']} | m(x) = m_dry + {_P['m_slope']}·x  (x in mol%) |
+| b | {_P['b']} | Gordon-Taylor mixing parameter |
+| c | {_P['c']} | Excess mixing term |
+| d | {_P['d']} | Higher-order correction |
+| Tg_H₂O | {_P['Tg_H2O']} K | Glass transition of pure water |
+| wt% → mol% | x = {_P['mol_slope']}·wt% | Linear conversion |
                 """)
             else:  # AND
                 st.markdown("""
@@ -2101,8 +2150,159 @@ Viscosity models calibrated on specific compositions:
             except Exception as _e_tas:
                 st.info(f"TAS diagram unavailable: {_e_tas}")
 
+    # ── AMS model: two sub-models (A_fixed and A_fitted) ────────────────────
+    if ACTIVE.get('model') == 'AMS':
+        P = ACTIVE
+
+        def ams_wt_mol(h): return P['mol_slope'] * h
+        def ams_tg(x):
+            dn=P['b']*(100-x)+x; w1=x/dn; w2=P['b']*(100-x)/dn
+            return w1*P['Tg_H2O']+w2*P['Tg_d']+P['c']*w1*w2*(P['Tg_d']-P['Tg_H2O'])+P['d']*w1*w2**2*(P['Tg_d']-P['Tg_H2O'])
+        def ams_m(x):    return P['m_dry'] + P['m_slope'] * x
+        def ams_A(x):    return P['L2'] - P['L3'] * P['L4']**x
+        def ams_visc(T_K, x, a_fixed=True):
+            A = P['A_fixed'] if a_fixed else ams_A(x)
+            Tg=ams_tg(x); m=ams_m(x); r=Tg/T_K
+            return A+(12-A)*r*np.exp((m/(12-A)-1)*(r-1))
+
+        st.info(
+            "This study models the viscosity of AMS-B1 trachyte using two approaches:\n"
+            "- **A fixed** (solid lines): the pre-exponential term A = −5.01 is held constant, "
+            "as commonly assumed in most MYEGA applications to volcanic melts.\n"
+            "- **A fitted** (dashed lines): A varies with H₂O content as "
+            "A(x) = L2 − L3 · L4^x, where x is H₂O in mol%. "
+            "This approach allows A to change with the dissolved water content, "
+            "providing a more flexible description of the viscosity–temperature relationship at variable water content."
+        )
+        st.subheader("⚙️ Parameters")
+        ac1,ac2,ac3,ac4 = st.columns(4)
+        with ac1:
+            aT_min=st.number_input("T min (°C):",value=700.0,step=50.0,min_value=300.0,max_value=1600.0,key='ams_Tmin')
+        with ac2:
+            aT_max=st.number_input("T max (°C):",value=1200.0,step=50.0,min_value=300.0,max_value=1600.0,key='ams_Tmax')
+        with ac3:
+            ax_inp=st.text_input("H₂O (wt%, comma-separated):",value=P['x_default'],key='ams_x')
+            try:
+                ax_list=sorted(set([max(0.0,float(v.strip())) for v in ax_inp.split(',') if v.strip()]))
+            except: ax_list=[0,1,2,3,4,5]
+            if 0.0 not in ax_list: ax_list=[0.0]+ax_list
+        with ac4:
+            aT_fix=st.number_input("Fixed T for η vs H₂O (°C):",value=1050.0,step=50.0,min_value=300.0,max_value=1600.0,key='ams_Tf')
+
+        if aT_max<=aT_min: st.error("T max > T min required."); st.stop()
+
+        aT_arr=np.linspace(aT_min+273.15,aT_max+273.15,300)
+        ax_dense=np.linspace(0,max(ax_list)*1.05+0.1,200)
+        ax_mol_dense=[ams_wt_mol(h) for h in ax_dense]
+        acmap=plt.get_cmap('plasma',max(len(ax_list),2))
+        aresults=[{'h2o_wt':h,'x_mol':round(ams_wt_mol(h),3),
+                   'Tg_K':round(ams_tg(ams_wt_mol(h)),2),
+                   'Tg_C':round(ams_tg(ams_wt_mol(h))-273.15,2),
+                   'm':round(ams_m(ams_wt_mol(h)),4),
+                   'A_fix':round(P['A_fixed'],5),
+                   'A_fit':round(ams_A(ams_wt_mol(h)),5)} for h in ax_list]
+
+        afig,(aax1,aax2,aax3)=plt.subplots(1,3,figsize=(18,5))
+
+        # Panel 1: visc vs T — both A_fixed (solid) and A_fitted (dashed)
+        for i_h,h in enumerate(ax_list):
+            xm=ams_wt_mol(h)
+            visc_fix=[ams_visc(T,xm,True)  for T in aT_arr]
+            visc_fit=[ams_visc(T,xm,False) for T in aT_arr]
+            aax1.plot(aT_arr-273.15,visc_fix,color=acmap(i_h),linewidth=2,linestyle='-',
+                      label=f"{h:.1f} wt%")
+            aax1.plot(aT_arr-273.15,visc_fit,color=acmap(i_h),linewidth=1.5,linestyle='--',
+                      label='_')
+        # Add style legend entries
+        from matplotlib.lines import Line2D as _L2D
+        _style_handles=[_L2D([0],[0],color='gray',linewidth=2,linestyle='-',label='A fixed'),
+                        _L2D([0],[0],color='gray',linewidth=1.5,linestyle='--',label='A fitted')]
+        _leg1=aax1.legend(fontsize=7,loc='upper right',title='H₂O (wt%)',title_fontsize=8)
+        aax1.add_artist(_leg1)
+        aax1.legend(handles=_style_handles,fontsize=8,loc='center right')
+        aax1.set_xlabel("Temperature (°C)",fontsize=11)
+        aax1.set_ylabel("log₁₀(η / Pa·s)",fontsize=11)
+        aax1.set_title("Viscosity vs Temperature\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11,fontweight='bold')
+        aax1.grid(True,linestyle='--',alpha=0.4)
+
+        # Panel 2: Tg, m and A vs H2O
+        aax2b=aax2.twinx()
+        tg_crv=[ams_tg(x)-273.15 for x in ax_mol_dense]
+        m_crv=[ams_m(x) for x in ax_mol_dense]
+        l1,=aax2.plot(ax_dense,tg_crv,'steelblue',linewidth=2.5,label='Tg (°C)')
+        aax2.scatter([r['h2o_wt'] for r in aresults],[r['Tg_C'] for r in aresults],
+                     color=[acmap(i) for i in range(len(aresults))],s=60,zorder=5,edgecolors='black',linewidths=0.8)
+        l2,=aax2b.plot(ax_dense,m_crv,'tomato',linewidth=2.5,linestyle='--',label='m')
+        aax2b.scatter([r['h2o_wt'] for r in aresults],[r['m'] for r in aresults],
+                      color=[acmap(i) for i in range(len(aresults))],s=50,zorder=5,edgecolors='black',linewidths=0.8,marker='D')
+        aax2.set_xlabel("H₂O (wt%)",fontsize=11)
+        aax2.set_ylabel("Tg (°C)",fontsize=11,color='steelblue')
+        aax2b.set_ylabel("Fragility index m",fontsize=11,color='tomato')
+        aax2.tick_params(axis='y',labelcolor='steelblue'); aax2b.tick_params(axis='y',labelcolor='tomato')
+        aax2.set_title("Tg and m vs H₂O\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11,fontweight='bold')
+        aax2.legend(handles=[l1,l2],fontsize=8,loc='center right')
+        aax2.grid(True,linestyle='--',alpha=0.4)
+
+        # Panel 3: visc vs H2O at fixed T — both A
+        aax3.plot(ax_dense,[ams_visc(aT_fix+273.15,x,True) for x in ax_mol_dense],
+                  'purple',linewidth=2.5,label='A fixed')
+        aax3.plot(ax_dense,[ams_visc(aT_fix+273.15,x,False) for x in ax_mol_dense],
+                  'purple',linewidth=1.5,linestyle='--',label='A fitted')
+        aax3.scatter(ax_list,[ams_visc(aT_fix+273.15,ams_wt_mol(h),True) for h in ax_list],
+                     color=[acmap(i) for i in range(len(ax_list))],s=70,zorder=5,edgecolors='black',linewidths=0.8)
+        aax3.scatter(ax_list,[ams_visc(aT_fix+273.15,ams_wt_mol(h),False) for h in ax_list],
+                     color=[acmap(i) for i in range(len(ax_list))],s=50,zorder=5,edgecolors='black',linewidths=0.8,marker='D')
+        aax3.set_xlabel("H₂O (wt%)",fontsize=11)
+        aax3.set_ylabel("log₁₀(η / Pa·s)",fontsize=11)
+        aax3.set_title(f"Viscosity vs H₂O at {aT_fix:.0f} °C\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11,fontweight='bold')
+        aax3.legend(fontsize=8,loc='upper right')
+        aax3.grid(True,linestyle='--',alpha=0.4)
+
+        plt.tight_layout(); st.pyplot(afig)
+
+        abuf_all=io.BytesIO(); afig.savefig(abuf_all,format='png',dpi=200,bbox_inches='tight'); abuf_all.seek(0)
+        def _bbams(ax):
+            _b=io.BytesIO()
+            bb=ax.get_tightbbox(afig.canvas.get_renderer()).transformed(afig.dpi_scale_trans.inverted())
+            afig.savefig(_b,format='png',dpi=200,bbox_inches=bb); _b.seek(0); return _b
+        _ab1=_bbams(aax1); _ab2=_bbams(aax2); _ab3=_bbams(aax3)
+        plt.close(afig)
+        _acols=st.columns(4)
+        with _acols[0]: st.download_button("⬇️ All figures",data=abuf_all,file_name="AMS_all.png",mime="image/png",key="dl_ams_all")
+        with _acols[1]: st.download_button("⬇️ Viscosity vs T",data=_ab1,file_name="AMS_visc_vs_T.png",mime="image/png",key="dl_ams_p0")
+        with _acols[2]: st.download_button("⬇️ Tg & m vs H₂O",data=_ab2,file_name="AMS_Tg_m.png",mime="image/png",key="dl_ams_p1")
+        with _acols[3]: st.download_button("⬇️ η vs H₂O",data=_ab3,file_name="AMS_visc_vs_H2O.png",mime="image/png",key="dl_ams_p2")
+
+        st.subheader("📊 Model summary")
+        st.dataframe(pd.DataFrame(aresults).rename(columns={
+            'h2o_wt':'H₂O (wt%)','x_mol':'H₂O (mol%)','Tg_K':'Tg (K)','Tg_C':'Tg (°C)',
+            'm':'m','A_fix':'A (fixed)','A_fit':'A (fitted)'}),
+            use_container_width=True,hide_index=True)
+
+        st.subheader("🌡️ Viscosity at specific conditions")
+        _sc1,_sc2=st.columns(2)
+        with _sc1: aT_sp=st.number_input("T (°C):",value=1050.0,step=50.0,min_value=300.0,max_value=1600.0,key='ams_Tsp')
+        with _sc2: ah_sp=st.number_input("H₂O (wt%):",value=1.0,step=0.5,min_value=0.0,max_value=10.0,key='ams_hsp')
+        axm_sp=ams_wt_mol(ah_sp)
+        lv_fix=ams_visc(aT_sp+273.15,axm_sp,True); lv_fit=ams_visc(aT_sp+273.15,axm_sp,False)
+        _vc1,_vc2=st.columns(2)
+        with _vc1: st.metric("log₁₀(η) — A fixed",f"{lv_fix:.3f}",help=f"A={P['A_fixed']:.5f} | m={ams_m(axm_sp):.3f} | Tg={ams_tg(axm_sp)-273.15:.1f}°C")
+        with _vc2: st.metric("log₁₀(η) — A fitted",f"{lv_fit:.3f}",help=f"A={ams_A(axm_sp):.5f} | m={ams_m(axm_sp):.3f} | Tg={ams_tg(axm_sp)-273.15:.1f}°C")
+
+        abuf_xl=io.BytesIO()
+        arows=[{'H2O (wt%)':h,'H2O (mol%)':round(ams_wt_mol(h),3),'T (°C)':Tc,'T (K)':Tc+273.15,
+                'log10_visc_A_fixed':round(ams_visc(Tc+273.15,ams_wt_mol(h),True),4),
+                'log10_visc_A_fitted':round(ams_visc(Tc+273.15,ams_wt_mol(h),False),4),
+                'Tg (K)':round(ams_tg(ams_wt_mol(h)),2),'m':round(ams_m(ams_wt_mol(h)),4),
+                'A_fixed':round(P['A_fixed'],5),'A_fitted':round(ams_A(ams_wt_mol(h)),5)}
+               for h in ax_list for Tc in np.arange(aT_min,aT_max+25,25)]
+        pd.DataFrame(arows).to_excel(abuf_xl,index=False,sheet_name='AMS_viscosity'); abuf_xl.seek(0)
+        st.download_button("⬇️ Download Excel",data=abuf_xl,file_name="AMS_trachyte_viscosity.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="dl_ams_xl")
+
+
     # ── HPG8 model: special rendering ────────────────────────────────────────
-    if ACTIVE.get('model') == 'HPG8':
+    elif ACTIVE.get('model') == 'HPG8':
         P = ACTIVE['params']
 
         def hpg8_A(x):  return P['J5'] - P['K5'] * P['L5']**x
@@ -2206,9 +2406,6 @@ Viscosity models calibrated on specific compositions:
         pd.DataFrame(hrows).to_excel(hbuf_xl,index=False,sheet_name='HPG8_Na_viscosity'); hbuf_xl.seek(0)
         st.download_button("\u2b07\ufe0f Download Excel",data=hbuf_xl,file_name="HPG8_Na_viscosity.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="dl_hpg_xl")
-        st.caption("\U0001f4d6 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
-                   "HPG8+Na: [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868), *Chem. Geol.* "
-                   "Model calibrated for Excess Na\u2082O = 0\u201320 mol%.")
 
     elif ACTIVE.get('model') == 'AND':
         P = ACTIVE
@@ -2322,9 +2519,6 @@ Viscosity models calibrated on specific compositions:
         pd.DataFrame(arows).to_excel(abuf_xl,index=False,sheet_name='Andesite_viscosity'); abuf_xl.seek(0)
         st.download_button('⬇️ Download Excel',data=abuf_xl,file_name='Andesite_viscosity.xlsx',
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='dl_and_xl')
-        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-                   "Andesite model: [Valdivia et al. (2025)](https://www.nature.com/articles/s43247-025-02424-9), "
-                   "*Commun. Earth Environ.* AND100 = reference andesite; TM = FeOtot+TiO2+MnO.")
 
     else:
         # ── Inputs layout: H2O full width, T controls above their panels ─────────
@@ -2533,7 +2727,11 @@ Viscosity models calibrated on specific compositions:
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            key="dl_strm_xl")
 
-    if 'Fanesi' in comp_model or 'Colli Albani' in comp_model:
+    if 'Abeykoon' in comp_model or 'Agnano' in comp_model:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
+                   "AMS-B1 trachyte: Abeykoon et al. (2026), *J. Geophys. Res. Solid Earth* (in press). "
+                   "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    elif 'Fanesi' in comp_model or 'Colli Albani' in comp_model:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
                    "Colli Albani: [Fanesi et al. (2025)](https://www.sciencedirect.com/science/article/pii/S0377027325000125), *J. Volcanol. Geotherm. Res.* "
                    "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
