@@ -27,7 +27,7 @@ PATH_MODEL = os.path.join(BASE_DIR, "model")
 sys.path.insert(0, BASE_DIR)
 
 # ── Page config (MUST be first Streamlit call) ────────────────────────────────
-st.set_page_config(page_title="MELVIS — Melt VIScosity", page_icon="🌋", layout="wide")
+st.set_page_config(page_title="MELVIS — MELt VIScosity", page_icon="🌋", layout="wide")
 
 # ── Auto-download model from Zenodo ──────────────────────────────────────────
 ZENODO_URL = "https://zenodo.org/records/19945909/files/model.zip"
@@ -342,7 +342,7 @@ Langhammer et al. (2021), *GGG*
 if mode == "🏠 Home":
 
     st.markdown("<div style='text-align:center'><span style='font-size:3em'>🌋</span></div>", unsafe_allow_html=True)
-    st.title("MELVIS — Melt VIScosity")
+    st.title("MELVIS — MELt VIScosity")
     st.markdown("*Volcanic melt viscosity platform developed by the [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/), CNR-ISSMC, Rome, Italy*")
     st.divider()
 
@@ -1459,6 +1459,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
 
         # ── Individual panel downloads ─────────────────────────────────────────
         st.subheader("📥 Download individual panels")
+        st.caption("_Each button downloads the panel directly above it._")
         results_ss   = st.session_state['hyd_results']
         meta_ss      = st.session_state['hyd_meta']
         Tg_d_ss      = meta_ss['Tg_d']
@@ -2759,6 +2760,14 @@ Viscosity models calibrated on specific compositions:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
                    "Vesuvio: [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126), *Earth Planet. Sci. Lett.* "
                    "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    elif '2025' in comp_model and 'Valdivia' in comp_model:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                   "Anhydrous andesite: [Valdivia et al. (2025)](https://www.nature.com/articles/s43247-025-02424-9), *Commun. Earth Environ.* "
+                   "Tg dependence: [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
+    elif 'Stopponi' in comp_model or 'haplogranitic' in comp_model:
+        st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
+                   "Haplogranite: [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868), *Chem. Geol.* "
+                   "Model calibrated for Excess Na₂O = 0–20 mol%.")
     else:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
                    "Stromboli: [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w), *Contrib. Mineral. Petrol.* 178, 45. "
