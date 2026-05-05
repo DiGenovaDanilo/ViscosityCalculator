@@ -647,7 +647,7 @@ if mode == "🔥 Viscosity Calculator":
             tas_clf = TASclf()
             tas_clf.add_to_axes(ax=ax_tas, add_labels=True,
                                 which_labels='volcanic',
-                                facecolor='#F0F0F0', edgecolor='#888888',
+                                facecolor='#F0F0F0', edgecolor='#555555',
                                 linewidth=1.0, alpha=0.9)
             for txt in ax_tas.texts:
                 txt.set_fontsize(7)
@@ -673,7 +673,7 @@ if mode == "🔥 Viscosity Calculator":
                                path_effects=[pe.withStroke(linewidth=2,
                                                            foreground='white')])
 
-            ax_tas.set_xlim(37, 80)
+            ax_tas.set_xlim(38, 80)
             ax_tas.set_ylim(0, 17)
             ax_tas.set_xlabel('SiO₂ (wt%)', fontsize=12)
             ax_tas.set_ylabel('Na₂O + K₂O (wt%)', fontsize=12)
@@ -939,7 +939,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             _tas_ext = TASclf()
             _tas_ext.add_to_axes(ax=_ax_ext, add_labels=True, which_labels='volcanic',
                                  facecolor='#F0F0F0', edgecolor='#888888')
-            _pyro_polys  = [p.get_path().vertices.tolist() for p in _ax_ext.patches]
+            _pyro_paths  = [p.get_path() for p in _ax_ext.patches]
             _pyro_labels = [(t.get_text().replace("\n"," "), t.get_position())
                             for t in _ax_ext.texts]
             plt.close(_fig_ext)
@@ -947,14 +947,24 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             # Build Plotly figure
             _fig_p = go.Figure()
 
-            # Polygons — exact pyrolite boundaries, styled like matplotlib
-            for _verts in _pyro_polys:
-                _xs = [v[0] for v in _verts]
-                _ys = [v[1] for v in _verts]
+            # Polygons — exact pyrolite boundaries
+            # matplotlib CLOSEPOLY: last vertex duplicates first and has code=79
+            # We exclude it and let Plotly's fill='toself' close the polygon correctly
+            from matplotlib.path import Path as _MplPath
+            for _path in _pyro_paths:
+                _xs, _ys = [], []
+                for _v, _code in zip(_path.vertices, _path.codes):
+                    if _code == _MplPath.CLOSEPOLY:
+                        continue
+                    _xs.append(float(_v[0]))
+                    _ys.append(float(_v[1]))
+                # Explicitly close: repeat first vertex so ALL edges are drawn
+                if _xs:
+                    _xs.append(_xs[0]); _ys.append(_ys[0])
                 _fig_p.add_trace(go.Scatter(
-                    x=_xs, y=_ys, fill='toself',
-                    fillcolor='rgba(255,255,255,0.0)',
-                    line=dict(color='#999999', width=1),
+                    x=_xs, y=_ys,
+                    fill='none',
+                    line=dict(color='#888888', width=0.8),
                     mode='lines', showlegend=False, hoverinfo='skip'
                 ))
 
@@ -967,7 +977,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                 )
 
             # Sample points — one trace per sample for reliable curveNumber
-            _N_POLY = len(_pyro_polys)
+            _N_POLY = len(_pyro_paths)
             for _si, _sn in enumerate(_all_samples):
                 _is_sel = (_sn == _current_sel)
                 _fig_p.add_trace(go.Scatter(
@@ -986,7 +996,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                 ))
 
             _fig_p.update_layout(
-                xaxis=dict(title='SiO₂ (wt%)', range=[35, 82],
+                xaxis=dict(title='SiO₂ (wt%)', range=[38, 82],
                            showgrid=True, gridcolor='rgba(200,200,200,0.5)',
                            gridwidth=1, zeroline=False, linecolor='#888',
                            ticks='outside', tickfont=dict(size=11)),
