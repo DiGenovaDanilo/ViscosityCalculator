@@ -911,14 +911,18 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
 
             # Iron redistribution + normalize for TAS plotting
             df_h_norm = df_h.copy()
+            # Ensure OXIDES columns are float64 to avoid pandas dtype errors on Cloud
+            df_h_norm[OXIDES] = df_h_norm[OXIDES].astype(float)
             for _idx, _row in df_h_norm.iterrows():
-                _feo = _row['FeO']; _fe2o3 = _row['Fe2O3']
+                _feo = float(_row['FeO']); _fe2o3 = float(_row['Fe2O3'])
                 if _feo > 0 and _fe2o3 == 0:
                     df_h_norm.at[_idx,'FeO'] = _feo/2; df_h_norm.at[_idx,'Fe2O3'] = _feo*1.11/2
                 elif _fe2o3 > 0 and _feo == 0:
                     df_h_norm.at[_idx,'Fe2O3'] = _fe2o3/2; df_h_norm.at[_idx,'FeO'] = _fe2o3/1.11/2
-                _s = df_h_norm.loc[_idx, OXIDES].sum()
-                if _s > 0: df_h_norm.loc[_idx, OXIDES] = df_h_norm.loc[_idx, OXIDES] / _s * 100.0
+                _arr = df_h_norm.loc[_idx, OXIDES].values.astype(float)
+                _s = _arr.sum()
+                if _s > 0:
+                    df_h_norm.loc[_idx, OXIDES] = (_arr / _s * 100.0)
 
             # Classify and get current selection
             _all_samples = df_h_norm['Sample'].tolist()
