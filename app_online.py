@@ -280,7 +280,8 @@ if st.session_state['hyd_done'] is None:
 # ==============================================================================
 with st.sidebar:
     st.markdown("## 🌋 MELVIS")
-    st.caption("**MEL**t **VIS**cosity — volcanic melt viscosity platform by [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/)")
+    st.caption("**MEL**t **VIS**cosity — volcanic melt viscosity platform by [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/)  \n"
+              "[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19945909.svg)](https://doi.org/10.5281/zenodo.19945909)")
     st.divider()
     mode = st.radio(
         "**Select mode:**",
@@ -433,10 +434,16 @@ with emphasis on volcanic processes, eruption dynamics, and advanced materials d
     st.divider()
     st.subheader("How to cite MELVIS")
     st.markdown("""
-Please cite the relevant model references shown in each module and acknowledge:
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19945909.svg)](https://doi.org/10.5281/zenodo.19945909)
 
-> *MELVIS — GLASS laboratory, CNR-ISSMC, Rome, Italy.
-> ERC Consolidator Grant NANOVOLC (grant 101044772).*
+If you use MELVIS in your research, please cite:
+
+> Di Genova, D. (2026). *MELVIS — MELt VIScosity: a volcanic melt viscosity platform*.
+> Zenodo. https://doi.org/10.5281/zenodo.19945909
+
+and the relevant model references shown in each module (see sidebar).
+Please also acknowledge the **GLASS laboratory** (CNR-ISSMC, Rome, Italy)
+and the **ERC Consolidator Grant NANOVOLC** (grant 101044772).
     """)
     st.info("👈 Select a mode from the sidebar to get started.")
 
@@ -1829,12 +1836,12 @@ elif mode == "🌋 Specific Composition Models":
 Viscosity models calibrated on specific compositions:
 
 - **Stromboli basalt** — [Valdivia et al. (2023)](https://link.springer.com/article/10.1007/s00410-023-02024-w)
-- **Peridotite** — [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407)
+- **Peridotite** — [Di Genova et al. (2023)](https://doi.org/10.1016/j.chemgeo.2023.121440)
 - **Anhydrous andesite** — [Valdivia et al. (2025)](https://www.nature.com/articles/s43247-025-02424-9)
-- **Colli Albani tephriphonolite** — [Fanesi et al. (2025)](https://www.sciencedirect.com/science/article/pii/S0377027325000125)
-- **Anhydrous metaluminous/peralkaline haplogranite** — [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868)
+- **Colli Albani tephriphonolite** — [Fanesi et al. (2025)](https://doi.org/10.1016/j.jvolgeores.2025.108276)
+- **Anhydrous metaluminous/peralkaline haplogranite** — [Stopponi et al. (2026)](https://doi.org/10.1016/j.chemgeo.2025.123196)
 - **Agnano-Monte Spina trachyte (Campi Flegrei)** — [Abeykoon et al. (2026)](https://agupubs.onlinelibrary.wiley.com/journal/21699356)
-- **Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126)
+- **Vesuvio phonotephrite (472 CE)** — [Dominijanni et al. (2026)](https://doi.org/10.1016/j.epsl.2025.119714)
     """)
 
     # ── Model selection ───────────────────────────────────────────────────────
@@ -2794,15 +2801,15 @@ Viscosity models calibrated on specific compositions:
                    "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
     elif 'Fanesi' in comp_model or 'Colli Albani' in comp_model:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
-                   "Colli Albani: [Fanesi et al. (2025)](https://www.sciencedirect.com/science/article/pii/S0377027325000125), *J. Volcanol. Geotherm. Res.* "
+                   "Colli Albani: [Fanesi et al. (2025)](https://doi.org/10.1016/j.jvolgeores.2025.108276), *J. Volcanol. Geotherm. Res.* "
                    "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
     elif 'Di Genova' in comp_model:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
-                   "Peridotite: [Di Genova et al. (2023)](https://www.sciencedirect.com/science/article/pii/S0009254123001407), *Chem. Geol.* "
+                   "Peridotite: [Di Genova et al. (2023)](https://doi.org/10.1016/j.chemgeo.2023.121440), *Chem. Geol.* "
                    "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
     elif '472 CE' in comp_model:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
-                   "Vesuvio: [Dominijanni et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0012821X25005126), *Earth Planet. Sci. Lett.* "
+                   "Vesuvio: [Dominijanni et al. (2026)](https://doi.org/10.1016/j.epsl.2025.119714), *Earth Planet. Sci. Lett.* "
                    "Tg(H\u2082O): [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
     elif '2025' in comp_model and 'Valdivia' in comp_model:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
@@ -2810,7 +2817,7 @@ Viscosity models calibrated on specific compositions:
                    "Tg dependence: [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918), *GGG* 22, e2021GC009918.")
     elif 'Stopponi' in comp_model or 'haplogranitic' in comp_model:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780–19784. "
-                   "Haplogranite: [Stopponi et al. (2026)](https://www.sciencedirect.com/science/article/pii/S0009254125005868), *Chem. Geol.* "
+                   "Haplogranite: [Stopponi et al. (2026)](https://doi.org/10.1016/j.chemgeo.2025.123196), *Chem. Geol.* "
                    "Model calibrated for Excess Na₂O = 0–20 mol%.")
     else:
         st.caption("📖 MYEGA: [Mauro et al. (2009)](https://www.pnas.org/doi/10.1073/pnas.0911705106), *PNAS* 106, 19780\u201319784. "
