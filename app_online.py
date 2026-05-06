@@ -97,8 +97,19 @@ def redistribute_iron(wt):
     return wt, flag
 
 def normalize_to_100(wt):
-    s = wt.sum()
-    return wt/s*100.0 if s > 0 else wt
+    """Normalize so that anhydrous oxides sum to (100 - H2O), preserving H2O.
+    Total always sums to 100. H2O index = 12.
+    """
+    h2o = wt[12]
+    wt_anhy = wt.copy()
+    wt_anhy[12] = 0.0
+    s = wt_anhy.sum()
+    if s <= 0:
+        return wt
+    target = 100.0 - h2o   # anhydrous part must sum to this
+    norm = wt_anhy / s * target
+    norm[12] = h2o          # H2O unchanged; total = target + h2o = 100
+    return norm
 
 def myega_eq(T, Tg, m, A=A_FIXED):
     return A + (Tg/T)*(12-A)*np.exp(((m/(12-A))-1)*((Tg/T)-1))
@@ -517,20 +528,23 @@ if mode == "🔥 Viscosity Calculator":
                 tg_m_dict[sname]=(Tg,m)
                 try: T_max=brentq(myega_eq,Tg,5000.0,args=(Tg,m))
                 except: T_max=3000.0
-                T_array=np.arange(Tg,T_max+50,50)
+                # Smooth MYEGA curve — 300 points, not spline
+                T_smooth=np.linspace(Tg, min(T_max, Tg+1200), 300)
+                visc_smooth=myega_eq(T_smooth,Tg,m)
+                ax.plot(T_smooth-273.15,visc_smooth,color=colors[idx],linewidth=1.5,label=sname)
+                T_array=np.arange(Tg,min(T_max,Tg+1200)+25,25)
                 visc_array=myega_eq(T_array,Tg,m)
-                ax.plot(T_array-273.15,visc_array,color=colors[idx],linewidth=1.5,label=sname)
                 for i,(T,v) in enumerate(zip(T_array,visc_array)):
                     all_curves.append({
-                        'Sample':   sname if i==0 else '',
-                        'Tg_K':    round(Tg,1)        if i==0 else '',
-                        'Tg_C':    round(Tg-273.15,1) if i==0 else '',
-                        'm':       round(m,2)          if i==0 else '',
-                        'T_K':     round(T,1),
-                        'T_C':     round(T-273.15,1),
-                        'log10_visc': round(float(v),3),
+                        'Sample': sname if i==0 else '',
+                        'A':      round(A_FIXED,2),
+                        'Tg_K':   round(Tg,2),
+                        'Tg_C':   round(Tg-273.15,2),
+                        'm':      round(m,4),
+                        'T_K':    round(T,2),
+                        'T_C':    round(T-273.15,2),
                     })
-                all_curves.append({k:'' for k in ['Sample','Tg_K','Tg_C','m','T_K','T_C','log10_visc']})
+                all_curves.append({k:'' for k in ['Sample','A','Tg_K','Tg_C','m','T_K','T_C']})
             except Exception as e:
                 skipped.append({'Sample':sname,'Error':str(e)})
             progress.progress((idx+1)/len(df), text=f"Processing {idx+1}/{len(df)}: {sname}")
@@ -553,10 +567,58 @@ if mode == "🔥 Viscosity Calculator":
         fig=st.session_state['fig']
         df_input=st.session_state['df_input']
 
+
+        # ── Build Excel and plot buffers here so download buttons work ──────
+        _wb_visc = Workbook()
+        _ws_vc = _wb_visc.active; _ws_vc.title='Viscosity_Curves'
+        # Write Viscosity_Curves with Excel formula for log10_visc in col H
+        _df_vc = pd.DataFrame(all_curves)
+        _vc_cols = ['Sample','A','Tg_K','Tg_C','m','T_K','T_C']
+        _vc_header = _vc_cols + ['log10_visc (MYEGA formula)']
+        _thin_vc=Side(style='thin',color='AAAAAA'); _brd_vc=Border(left=_thin_vc,right=_thin_vc,top=_thin_vc,bottom=_thin_vc)
+        _ctr_vc=Alignment(horizontal='center',vertical='center')
+        for ci,h in enumerate(_vc_header,1):
+            _c=_ws_vc.cell(row=1,column=ci,value=h)
+            _c.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
+            _c.fill=PatternFill('solid',start_color='1F4E79')
+            _c.alignment=_ctr_vc; _c.border=_brd_vc
+        _ws_vc.row_dimensions[1].height=25
+        for ri,row_d in enumerate(_df_vc.itertuples(index=False),2):
+            vals = [row_d.Sample, row_d.A, row_d.Tg_K, row_d.Tg_C, row_d.m, row_d.T_K, row_d.T_C]
+            for ci,v in enumerate(vals,1):
+                _cell=_ws_vc.cell(row=ri,column=ci,value=v if v!='' else None)
+                _cell.alignment=_ctr_vc; _cell.border=_brd_vc
+                if isinstance(v,float): _cell.number_format='0.0000'
+            # Column H: Excel formula using A(col B), Tg_K(col C), m(col E), T_K(col F)
+            if row_d.T_K != '':
+                _formula_xl = f'=B{ri}+(C{ri}/F{ri})*(12-B{ri})*EXP((E{ri}/(12-B{ri})-1)*(C{ri}/F{ri}-1))'
+                _hcell=_ws_vc.cell(row=ri,column=8,value=_formula_xl)
+                _hcell.number_format='0.0000'; _hcell.alignment=_ctr_vc; _hcell.border=_brd_vc
+            else:
+                _ws_vc.cell(row=ri,column=8).border=_brd_vc
+        for ci,w in enumerate([18,8,10,10,10,12,12,22],1):
+            _ws_vc.column_dimensions[get_column_letter(ci)].width=w
+        _ws_vc.freeze_panes='A2'
+        _wb_chem = Workbook()
+        _ws_in2 = _wb_chem.active; _ws_in2.title='Input_Chemistry'
+        cols_orig2 = ['Sample']+OXIDES+(['Reference'] if 'Reference' in df_input.columns else [])
+        df_orig2 = df_input[cols_orig2].copy()
+        df_orig2.insert(len(df_orig2.columns)-(1 if 'Reference' in df_input.columns else 0),
+                        'SUM_input', df_input[OXIDES].sum(axis=1).round(3))
+        write_sheet(_ws_in2, df_orig2, hdr_color='1B5E20')
+        _ws_rc2 = _wb_chem.create_sheet('Recalculated_Chemistry')
+        cols_rec2 = ['Sample']+OXIDES+['SUM','Fe_treatment']
+        if rows_recalc and 'Reference' in rows_recalc[0]: cols_rec2.append('Reference')
+        write_sheet(_ws_rc2, pd.DataFrame(rows_recalc)[cols_rec2], hdr_color='1F4E79')
+        buf_visc_early = io.BytesIO(); _wb_visc.save(buf_visc_early); buf_visc_early.seek(0)
+        buf_chem_early = io.BytesIO(); _wb_chem.save(buf_chem_early); buf_chem_early.seek(0)
+        buf_plot_early = io.BytesIO(); fig.savefig(buf_plot_early,format='png',dpi=200); buf_plot_early.seek(0)
+
         st.subheader("📈 Viscosity curves")
         st.pyplot(fig)
+        plt.close(fig)
 
-        st.caption("Curves are **MYEGA fits** (Mauro et al. 2009) computed from Tg and m values generated by the ANN model (Langhammer et al. 2022). They are not spline interpolations of ANN points.")
+        st.caption("Curves are **MYEGA fits** (Mauro et al. 2009) computed from Tg and m values generated by the ANN model (Langhammer et al. 2022).")
 
         # ── Download after viscosity curves ─────────────────────────────────
         st.subheader("📥 Download results")
@@ -761,77 +823,6 @@ if mode == "🔥 Viscosity Calculator":
         wb=Workbook()
         ws1=wb.active; ws1.title='Viscosity_Curves'
         write_sheet(ws1,pd.DataFrame(all_curves),hdr_color='1F4E79')
-        # MYEGA_Calculator sheet (Viscosity_at_T now has its own separate download)
-        ws_calc=wb.create_sheet('MYEGA_Calculator')
-        T_STEP_C=25; T_END_C=1600
-        inp_fill=PatternFill('solid',start_color='FFF9C4')
-        res_fill=PatternFill('solid',start_color='E3F2FD')
-        wht_fill=PatternFill('solid',start_color='FFFFFF')
-        drk_fill=PatternFill('solid',start_color='37474F')
-        thin_c=Side(style='thin',color='AAAAAA')
-        brd_c=Border(left=thin_c,right=thin_c,top=thin_c,bottom=thin_c)
-        ctr_c=Alignment(horizontal='center',vertical='center')
-        BCOLS=3; GCOLS=1
-        for s_idx,sname in enumerate(tg_m_dict):
-            Tg_val,m_val=tg_m_dict[sname]
-            cs=1+s_idx*(BCOLS+GCOLS)
-            ws_calc.merge_cells(start_row=1,start_column=cs,end_row=1,end_column=cs+BCOLS-1)
-            ch=ws_calc.cell(row=1,column=cs,value=sname)
-            ch.font=Font(name='Arial',bold=True,color='FFFFFF',size=10)
-            ch.fill=PatternFill('solid',start_color='1B5E20')
-            ch.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-            ch.border=brd_c; ws_calc.row_dimensions[1].height=22
-            ws_calc.cell(row=2,column=cs,value='Tg (K)').font=Font(name='Arial',bold=True,size=9)
-            tc2=ws_calc.cell(row=2,column=cs+1,value=round(Tg_val,1))
-            tc2.fill=inp_fill; tc2.border=brd_c; tc2.alignment=ctr_c; tc2.number_format='0.0'
-            ws_calc.cell(row=3,column=cs,value='m').font=Font(name='Arial',bold=True,size=9)
-            mc2=ws_calc.cell(row=3,column=cs+1,value=round(m_val,2))
-            mc2.fill=inp_fill; mc2.border=brd_c; mc2.alignment=ctr_c; mc2.number_format='0.00'
-            tga=f"${get_column_letter(cs+1)}$2"; ma=f"${get_column_letter(cs+1)}$3"
-            DR=5
-            for ci,label in enumerate(['T (°C)','T (K)','log10(visc / Pa·s)'],0):
-                cell=ws_calc.cell(row=DR-1,column=cs+ci,value=label)
-                cell.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
-                cell.fill=drk_fill; cell.alignment=ctr_c; cell.border=brd_c
-            ws_calc.row_dimensions[DR-1].height=28
-            Tg_C=Tg_val-273.15; T_first=int(Tg_C//T_STEP_C)*T_STEP_C
-            T_values=list(range(T_first,T_END_C+T_STEP_C,T_STEP_C))
-            for r_idx,tc in enumerate(T_values):
-                dr=DR+r_idx; fill=res_fill if r_idx%2==0 else wht_fill
-                tcc=get_column_letter(cs)
-                ct=ws_calc.cell(row=dr,column=cs,value=tc)
-                ct.border=brd_c; ct.alignment=ctr_c; ct.fill=fill
-                ctk=ws_calc.cell(row=dr,column=cs+1,value=f"={tcc}{dr}+273.15")
-                ctk.border=brd_c; ctk.alignment=ctr_c; ctk.number_format='0.00'; ctk.fill=fill
-                tka=f"{get_column_letter(cs+1)}{dr}"
-                formula=f"=-2.9+({tga}/{tka})*(12-(-2.9))*EXP(({ma}/(12-(-2.9))-1)*({tga}/{tka}-1))"
-                cv=ws_calc.cell(row=dr,column=cs+2,value=formula)
-                cv.border=brd_c; cv.alignment=ctr_c; cv.number_format='0.000'; cv.fill=fill
-                ws_calc.column_dimensions[get_column_letter(cs)].width=9
-                ws_calc.column_dimensions[get_column_letter(cs+1)].width=9
-                ws_calc.column_dimensions[get_column_letter(cs+2)].width=16
-                if s_idx<len(tg_m_dict)-1:
-                    ws_calc.column_dimensions[get_column_letter(cs+BCOLS)].width=2
-        ws_calc.freeze_panes='A5'
-
-            # Chemistry sheet
-        wb_chem=Workbook()
-        ws_in=wb_chem.active; ws_in.title='Input_Chemistry'
-        cols_orig=['Sample']+OXIDES
-        if 'Reference' in df_input.columns: cols_orig.append('Reference')
-        df_orig=df_input[cols_orig].copy()
-        df_orig.insert(len(df_orig.columns)-(1 if 'Reference' in df_orig.columns else 0),
-                   'SUM_input',df_input[OXIDES].sum(axis=1).round(3))
-        write_sheet(ws_in,df_orig,hdr_color='1B5E20')
-        ws_rc=wb_chem.create_sheet('Recalculated_Chemistry')
-        cols_rec=['Sample']+OXIDES+['SUM','Fe_treatment']
-        if 'Reference' in rows_recalc[0]: cols_rec.append('Reference')
-        write_sheet(ws_rc,pd.DataFrame(rows_recalc)[cols_rec],hdr_color='1F4E79')
-
-        # Buffers for early download (MYEGA curves only, no specific T)
-        buf_visc_early=io.BytesIO(); wb.save(buf_visc_early); buf_visc_early.seek(0)
-        buf_chem_early=io.BytesIO(); wb_chem.save(buf_chem_early); buf_chem_early.seek(0)
-        buf_plot_early=io.BytesIO(); fig.savefig(buf_plot_early,format='png',dpi=200); buf_plot_early.seek(0)
 
         if skipped:
             st.warning(f"⚠️ {len(skipped)} samples could not be processed:")
@@ -1285,7 +1276,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         # ── Excel ─────────────────────────────────────────────────────────────
         wb2 = Workbook()
 
-        # Sheet 1: Parameters
+        # ── Sheet: Parameters ──
         ws_p = wb2.active; ws_p.title = 'Parameters'
         thin2=Side(style='thin',color='AAAAAA')
         brd2=Border(left=thin2,right=thin2,top=thin2,bottom=thin2)
@@ -1342,7 +1333,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                 cell=ws_p.cell(row=r,column=c,value=val)
                 dat2(cell,alt=(r%2==0), col=c)
 
-        # Sheet 2: Tg and m vs H2O
+        # ── Sheet: Tg_m_vs_H2O ──
         ws_tgm = wb2.create_sheet('Tg_m_vs_H2O')
         h2o_headers=['H2O (wt%)','H2O (mol%)','Tg_ANN (K)','Tg_ANN (C)',
                      'Tg_fit (K)','Tg_fit (C)','m_ANN','m_Eq12','m_ExpSat','m_constant']
@@ -1918,7 +1909,7 @@ Viscosity models calibrated on specific compositions:
         'no_tas': True,
     }
 
-    # ── HPG8+Na parameters (Stopponi et al. 2026, Chem. Geol.) ─────────────
+    # ── Metaluminous/peralkaline haplogranite parameters (Stopponi et al. 2026) ──
     # Model for anhydrous peralkaline rhyolite; Excess Na2O replaces water
     # All MYEGA params depend on Excess Na2O (mol%)
     HPG8_PARAMS = {
@@ -1927,7 +1918,7 @@ Viscosity models calibrated on specific compositions:
         'J9': 22.95, 'K9': 0.7,                  # m  = J9 + K9*x
     }
     HPG8 = {
-        'name':      'HPG8+Na peralkaline rhyolite',
+        'name':      'Metaluminous/peralkaline haplogranite',
         'ref':       'Stopponi et al. (2026)',
         'model':     'HPG8',        # special model — not MYEGA with fixed A
         'x_label':   'Excess Na₂O (mol%)',
@@ -2409,7 +2400,7 @@ Viscosity models calibrated on specific compositions:
                       color=hcmap(i),linewidth=2,label=f"{x:.0f} mol%")
         hax1.set_xlabel("Temperature (\u00b0C)",fontsize=11)
         hax1.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)",fontsize=11)
-        hax1.set_title("Viscosity vs Temperature\nHPG8+Na (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax1.set_title("Viscosity vs Temperature\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
         hax1.legend(fontsize=8,loc='upper right',title='Excess Na\u2082O',title_fontsize=8)
         hax1.grid(True,linestyle='--',alpha=0.4)
 
@@ -2424,7 +2415,7 @@ Viscosity models calibrated on specific compositions:
         hax2.set_ylabel("Tg (\u00b0C)",fontsize=11,color='steelblue')
         hax2b.set_ylabel("Fragility index m",fontsize=11,color='tomato')
         hax2.tick_params(axis='y',labelcolor='steelblue'); hax2b.tick_params(axis='y',labelcolor='tomato')
-        hax2.set_title("Tg and m vs Excess Na\u2082O\nHPG8+Na (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax2.set_title("Tg and m vs Excess Na₂O\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
         hax2.legend(handles=[hl1,hl2],fontsize=8,loc='center right')
         hax2.grid(True,linestyle='--',alpha=0.4)
 
@@ -2433,7 +2424,7 @@ Viscosity models calibrated on specific compositions:
                      color=[hcmap(i) for i in range(len(hx_list))],s=70,zorder=5,edgecolors='black',linewidths=0.8)
         hax3.set_xlabel("Excess Na\u2082O (mol%)",fontsize=11)
         hax3.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)",fontsize=11)
-        hax3.set_title(f"Viscosity vs Excess Na\u2082O at {hT_fixed:.0f} \u00b0C\nHPG8+Na (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax3.set_title(f"Viscosity vs Excess Na₂O at {hT_fixed:.0f} °C\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
         hax3.grid(True,linestyle='--',alpha=0.4)
 
         plt.tight_layout()
