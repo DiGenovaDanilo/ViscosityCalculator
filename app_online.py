@@ -1455,8 +1455,12 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             _x_mol = r['h2o_mol']
             _Tg_x  = tg_func(_x_mol)
             _m_x   = float(m_poly(_x_mol))
-            for _Tc in range(int((_Tg_x-273.15)//25)*25, int(myega_eq(0,_Tg_x,_m_x))+25, 25):
+            _max_t = 3000
+            for _Tc in range(int((_Tg_x-273.15)//25)*25, _max_t+25, 25):
                 _Tk = _Tc + 273.15
+                _lv = float(myega_eq(_Tk, _Tg_x, _m_x))
+                if _lv < -10:
+                    break
                 try:
                     _lv = A_FIXED + (12-A_FIXED)*(_Tg_x/_Tk)*np.exp((_m_x/(12-A_FIXED)-1)*(_Tg_x/_Tk-1))
                 except:
