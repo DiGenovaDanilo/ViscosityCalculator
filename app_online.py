@@ -5,6 +5,9 @@ Langhammer et al. (2022) ANN model — two modes:
   2. Anhydrous and Hydrous Modelling (Tg, m and viscosity vs H2O)
 """
 
+import warnings
+warnings.filterwarnings('ignore', message='Bad key')
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 import sys, os, io, pathlib
 import numpy as np
 import pandas as pd
@@ -30,18 +33,71 @@ sys.path.insert(0, BASE_DIR)
 st.set_page_config(page_title="MELVIS — MELt VIScosity", page_icon="🌋", layout="wide")
 
 # ── Auto-download model from Zenodo ──────────────────────────────────────────
-ZENODO_URL = "https://zenodo.org/records/19945909/files/model.zip"
+ZENODO_URL = "https://zenodo.org/records/19945909/files/MELVIS_v1.zip"
 if not os.path.exists(PATH_MODEL):
-    with st.spinner("Downloading ANN model from Zenodo (first run only, ~50 MB)..."):
-        zip_path = os.path.join(BASE_DIR, "model.zip")
+    with st.spinner("Downloading ANN model from Zenodo (first run only)..."):
+        zip_path = os.path.join(BASE_DIR, "MELVIS_v1.zip")
         urllib.request.urlretrieve(ZENODO_URL, zip_path)
         with zipfile.ZipFile(zip_path, 'r') as z:
-            z.extractall(BASE_DIR)
+            for member in z.namelist():
+                if 'model/' in member and not member.endswith('/MELVIS_v1/'):
+                    target = os.path.join(BASE_DIR, member.replace('MELVIS_v1/', '', 1))
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    if not member.endswith('/'):
+                        with z.open(member) as src, open(target, 'wb') as dst:
+                            dst.write(src.read())
         os.remove(zip_path)
-    st.success("Model downloaded successfully!")
+    st.success("✅ Model downloaded successfully!")
 
-from wt_to_mol_calc import mol_conv
-from myega import myega
+
+def mol_conv(wt):
+    """Convert wt% array to ANN normalised input, mol fractions and mol%.
+    wt = array of 13 oxides: SiO2,TiO2,Al2O3,FeO,MnO,MgO,CaO,Na2O,K2O,P2O5,Cr2O3,Fe2O3,H2O
+    Returns: (normalised, mol_frac, mol_per)
+    """
+    o_w=15.999; si_w=28.085; ti_w=47.867; al_w=26.982; fe_w=55.845
+    mn_w=54.938; mg_w=24.305; ca_w=40.078; na_w=22.99; k_w=39.098
+    p_w=30.974; cr_w=51.996; h_w=1.007
+    avg_param=np.array([0.646068624,0.006122257,0.105031177,0.015038062,0.00071489,
+                        0.056749591,0.068780308,0.048986216,0.028347995,0.000494008,
+                        6.37117E-05,0.008792248,0.014476695,0.218617062,0.324060518])
+    var_param=np.array([0.013966878,7.54969E-05,0.00186878,0.000335448,7.06524E-07,
+                        0.00498134,0.00372115,0.001487268,0.001029727,1.62697E-06,
+                        9.68478E-08,0.000148228,0.000994256,0.010377959,0.047453609])
+    mol_weight=np.array([si_w+2*o_w, ti_w+2*o_w, 2*al_w+3*o_w, fe_w+o_w, mn_w+o_w,
+                         mg_w+o_w, ca_w+o_w, 2*na_w+o_w, 2*k_w+o_w, 2*p_w+5*o_w,
+                         2*cr_w+3*o_w, 2*fe_w+3*o_w, 2*h_w+o_w])
+    wt_sum=np.sum(wt[:-1])
+    wt_norm=np.append((100-wt[-1])*wt[:-1]/wt_sum, wt[-1])
+    wt_div_mol=wt_norm/mol_weight
+    wt_div_mol_sum=np.sum(wt_div_mol)
+    mol_frac=wt_div_mol/wt_div_mol_sum
+    mol_per=mol_frac*100
+    sm=sum(mol_frac[3:9])
+    nak=mol_frac[8]/(mol_frac[8]+mol_frac[7]) if (mol_frac[8]+mol_frac[7])!=0 else 0
+    mol_frac=np.append(mol_frac,[sm,nak])
+    normalised=(mol_frac-avg_param)/np.sqrt(var_param)
+    return normalised, mol_frac, mol_per
+
+
+def myega(t, eta, t_input):
+    """Fit MYEGA equation to viscosity data and return parameters + predictions.
+    t, eta: training data (T in K, log10 viscosity)
+    t_input: temperatures for prediction
+    Returns: (param, fit, t_plot, eta_goal)
+    """
+    from scipy import optimize as _opt
+    t = np.asarray(t); eta = np.asarray(np.squeeze(eta))
+    def _myega_fit(T, tg, m):
+        eta_d = -2.9
+        return eta_d + (tg/T)*(12-eta_d)*np.exp(((m/(12-eta_d))-1)*((tg/T)-1))
+    param, _ = _opt.curve_fit(_myega_fit, t, eta, p0=[900, 30], bounds=(0, np.inf))
+    t_plot = np.arange(min(t), max(t), 1)
+    fit = _myega_fit(t_plot, *param)
+    eta_goal = _myega_fit(t_input, *param)
+    return param, fit, t_plot, eta_goal
+
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 OXIDES  = ['SiO2','TiO2','Al2O3','FeO','MnO','MgO','CaO',
@@ -82,6 +138,7 @@ A,77.63,0.11,12.73,3.03,0.03,0.06,0.92,4.44,1.62,0.0,0.0,0.0,0,"Di Genova et al.
 # SHARED FUNCTIONS
 # ==============================================================================
 
+@st.cache_resource
 @st.cache_resource
 def load_model():
     return tf.keras.models.load_model(PATH_MODEL)
@@ -207,14 +264,16 @@ def fit_tg(x_mol_arr, Tg_arr, Tg_d):
         except: return 1e10
     best_rmse = np.inf
     best_p    = np.array([0.1, 1.5, -2.0])
-    for b0 in [0.05,0.1,0.15,0.2,0.3,0.5,1.0,2.0]:
+    for b0 in [0.05,0.1,0.2,0.3,0.5,1.0]:        # 6 instead of 8
         for c0 in [0.5,1.0,1.5,2.0,3.0]:
             for d0 in [-3.0,-2.0,-1.5,-1.0,-0.5]:
                 try:
                     res = minimize(rmse_tg,[b0,c0,d0],method='Nelder-Mead',
-                                   options={'maxiter':20000,'xatol':1e-8,'fatol':1e-8})
+                                   options={'maxiter':2000,'xatol':1e-6,'fatol':1e-6})
                     if res.fun < best_rmse and res.x[0]>0:
                         best_rmse=res.fun; best_p=res.x
+                        if best_rmse < 0.5:  # good enough — stop early
+                            return best_p, best_rmse
                 except: pass
     return best_p, best_rmse
 
@@ -1455,12 +1514,8 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             _x_mol = r['h2o_mol']
             _Tg_x  = tg_func(_x_mol)
             _m_x   = float(m_poly(_x_mol))
-            _max_t = 3000
-            for _Tc in range(int((_Tg_x-273.15)//25)*25, _max_t+25, 25):
+            for _Tc in range(int((_Tg_x-273.15)//25)*25, 1625, 25):
                 _Tk = _Tc + 273.15
-                _lv = float(myega_eq(_Tk, _Tg_x, _m_x))
-                if _lv < -10:
-                    break
                 try:
                     _lv = A_FIXED + (12-A_FIXED)*(_Tg_x/_Tk)*np.exp((_m_x/(12-A_FIXED)-1)*(_Tg_x/_Tk-1))
                 except:
