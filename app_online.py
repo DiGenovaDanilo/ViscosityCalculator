@@ -39,7 +39,7 @@ st.set_page_config(page_title="MELVIS — MELt VIScosity", page_icon="🌋", lay
 
 # ── Analytics  ────────────────────────────────────────────────────────────────
 st.markdown(
-    '<img src="https://melvis.goatcounter.com/count?p=/app" '
+    '<img src="https://melvis-app.goatcounter.com/count?p=/app" '
     'style="position:absolute;left:-9999px" alt="">',
     unsafe_allow_html=True
 )
