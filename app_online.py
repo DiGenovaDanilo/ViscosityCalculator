@@ -150,7 +150,6 @@ A,77.63,0.11,12.73,3.03,0.03,0.06,0.92,4.44,1.62,0.0,0.0,0.0,0,"Di Genova et al.
 # ==============================================================================
 
 @st.cache_resource
-@st.cache_resource
 def load_model():
     return tf.keras.models.load_model(PATH_MODEL)
 
