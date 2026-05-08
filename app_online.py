@@ -24,13 +24,32 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import urllib.request, zipfile
 
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 PATH_MODEL = os.path.join(BASE_DIR, "model")
 sys.path.insert(0, BASE_DIR)
 
+# ── Version ───────────────────────────────────────────────────────────────────
+MELVIS_VERSION = "1.0.0"
+
 # ── Page config (MUST be first Streamlit call) ────────────────────────────────
 st.set_page_config(page_title="MELVIS — MELt VIScosity", page_icon="🌋", layout="wide")
+
+import streamlit.components.v1 as components
+
+# ── Analytics ────────────────────────────────────────────────────────────────
+GA_ID = "G-545MKTF06Y"
+
+components.html(f"""
+<script async src="https://www.googletagmanager.com/gtag/js?id={GA_ID}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+  gtag('config', '{GA_ID}');
+</script>
+""", height=0, width=0)
 
 # ── Auto-download model from Zenodo ──────────────────────────────────────────
 ZENODO_URL = "https://zenodo.org/records/19945909/files/MELVIS_v1.zip"
@@ -48,7 +67,6 @@ if not os.path.exists(PATH_MODEL):
                             dst.write(src.read())
         os.remove(zip_path)
     st.success("✅ Model downloaded successfully!")
-
 
 def mol_conv(wt):
     """Convert wt% array to ANN normalised input, mol fractions and mol%.
@@ -341,6 +359,7 @@ with st.sidebar:
     st.markdown("## 🌋 MELVIS")
     st.caption("**MEL**t **VIS**cosity — volcanic melt viscosity platform by [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/)  \n"
               "[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19945909.svg)](https://doi.org/10.5281/zenodo.19945909)")
+    st.caption(f"v{MELVIS_VERSION}")
     st.divider()
     mode = st.radio(
         "**Select mode:**",
@@ -504,6 +523,21 @@ and the relevant model references shown in each module (see sidebar).
 Please also acknowledge the **GLASS laboratory** (CNR-ISSMC, Rome, Italy)
 and the **ERC Consolidator Grant NANOVOLC** (grant 101044772).
     """)
+
+    _BIBTEX = """@software{digenova_melvis_2026,
+  author    = {Di Genova, Danilo},
+  title     = {{MELVIS} --- {MELt} {VIScosity}: a volcanic melt viscosity platform},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.19945909},
+  url       = {https://doi.org/10.5281/zenodo.19945909}
+}"""
+    with st.expander("📋 Copy BibTeX"):
+        st.code(_BIBTEX, language="bibtex")
+        st.download_button("⬇️ Download .bib file", data=_BIBTEX,
+                           file_name="MELVIS_citation.bib", mime="text/plain",
+                           key="dl_bibtex")
+
     st.info("👈 Select a mode from the sidebar to get started.")
 
 # ==============================================================================
