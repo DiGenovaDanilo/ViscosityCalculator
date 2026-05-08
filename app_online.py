@@ -424,7 +424,7 @@ Langhammer et al. (2021), *GGG*
         st.markdown("📖 References shown below each model.")
     if mode != "🌋 Specific Composition Models":
         st.divider()
-    st.markdown("**Questions?** ✉️ [danilo.digenova@cnr.it](mailto:danilo.digenova@cnr.it)")
+    st.markdown("**Questions?** ✉️ [melvis@danilodigenova.org](mailto:melvis@danilodigenova.org)")
 
 # ==============================================================================
 # ==============================================================================
@@ -497,7 +497,7 @@ at the Institute of Science, Technology and Sustainability for Ceramics
 with emphasis on volcanic processes, eruption dynamics, and advanced materials design.
 
 **Principal Investigator:** [Danilo Di Genova](https://www.danilodigenova.org/) (Research Director at CNR-ISSMC)  
-📧 [danilo.digenova@cnr.it](mailto:danilo.digenova@cnr.it)
+📧 [melvis@danilodigenova.org](mailto:melvis@danilodigenova.org)
         """)
     with _g2:
         st.markdown("""
