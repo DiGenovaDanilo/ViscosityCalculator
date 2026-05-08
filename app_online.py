@@ -37,8 +37,7 @@ MELVIS_VERSION = "1.0.0"
 st.set_page_config(page_title="MELVIS — MELt VIScosity", page_icon="🌋", layout="wide")
 
 
-# ── Analytics (inject GA4 into Streamlit's own index.html) ───────────────────
-
+# ── Analytics ────────────────────────────────────────────────────────────────
 GA_ID = "G-545MKTF06Y"
 _ga_js = f"""<script async src="https://www.googletagmanager.com/gtag/js?id={GA_ID}"></script>
 <script>
@@ -48,10 +47,14 @@ _ga_js = f"""<script async src="https://www.googletagmanager.com/gtag/js?id={GA_
   gtag('config', '{GA_ID}');
 </script>"""
 
-_index = pathlib.Path(st.__file__).parent / "static" / "index.html"
-_html = _index.read_text()
-if GA_ID not in _html:
-    _index.write_text(_html.replace("<head>", f"<head>{_ga_js}"))
+try:
+    _index = pathlib.Path(st.__file__).parent / "static" / "index.html"
+    _html = _index.read_text()
+    if GA_ID not in _html:
+        _index.write_text(_html.replace("<head>", f"<head>{_ga_js}"))
+except PermissionError:
+    import streamlit.components.v1 as components
+    components.html(f"{_ga_js}", height=0, width=0)
 
 # ── Auto-download model from Zenodo ──────────────────────────────────────────
 ZENODO_URL = "https://zenodo.org/records/19945909/files/MELVIS_v1.zip"
