@@ -150,7 +150,6 @@ A,77.63,0.11,12.73,3.03,0.03,0.06,0.92,4.44,1.62,0.0,0.0,0.0,0,"Di Genova et al.
 # ==============================================================================
 
 @st.cache_resource
-@st.cache_resource
 def load_model():
     return tf.keras.models.load_model(PATH_MODEL)
 
@@ -1528,14 +1527,13 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         ws_myega_g = wb2.create_sheet('MYEGA_Global_Hydrous')
         _thin2=Side(style='thin',color='AAAAAA'); _brd2=Border(left=_thin2,right=_thin2,top=_thin2,bottom=_thin2)
         _ctr2=Alignment(horizontal='center',vertical='center')
-        _hcols_g = ['H₂O (wt%)','H₂O (mol%)','T (°C)','T (K)','Tg (K)','Tg (°C)','m (ExpSat)','log₁₀(η/Pa·s)','MYEGA formula']
+        _hcols_g = ['H₂O (wt%)','H₂O (mol%)','T (°C)','T (K)','Tg (K)','Tg (°C)','m (ExpSat)','log₁₀(η/Pa·s)']
         for ci,col in enumerate(_hcols_g,1):
             _c=ws_myega_g.cell(row=1,column=ci,value=col)
             _c.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
             _c.fill=PatternFill('solid',start_color='1B5E20')
             _c.alignment=_ctr2; _c.border=_brd2
         ws_myega_g.row_dimensions[1].height=25
-        _formula_str = f'A + (12-A)*(Tg/T)*exp((m/(12-A)-1)*(Tg/T-1));  A={A_FIXED}'
         _row_g = 2
         for r in results:
             _x_mol = r['h2o_mol']
@@ -1548,16 +1546,20 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                 except:
                     continue
                 _vals = [round(r['h2o_wt'],2), round(_x_mol,3), _Tc, round(_Tk,2),
-                         round(_Tg_x,2), round(_Tg_x-273.15,2), round(_m_x,4), round(_lv,4),
-                         _formula_str if _row_g==2 else '']
+                         round(_Tg_x,2), round(_Tg_x-273.15,2), round(_m_x,4)]
                 for ci,v in enumerate(_vals,1):
                     _cell=ws_myega_g.cell(row=_row_g,column=ci,value=v)
                     _cell.alignment=_ctr2; _cell.border=_brd2
                     if isinstance(v,float): _cell.number_format='0.0000'
                     if _row_g%2==0: _cell.fill=PatternFill('solid',start_color='E8F5E9')
+                # Column H: interactive MYEGA Excel formula
+                _f = f'=-2.9+14.9*(E{_row_g}/D{_row_g})*EXP((G{_row_g}/14.9-1)*(E{_row_g}/D{_row_g}-1))'
+                _cell_h = ws_myega_g.cell(row=_row_g, column=8, value=_f)
+                _cell_h.alignment=_ctr2; _cell_h.border=_brd2
+                _cell_h.number_format='0.0000'
+                if _row_g%2==0: _cell_h.fill=PatternFill('solid',start_color='E8F5E9')
                 _row_g += 1
         for ci in [1,2,4,5,6,7,8]: ws_myega_g.column_dimensions[get_column_letter(ci)].width=14
-        ws_myega_g.column_dimensions['I'].width=55
         ws_myega_g.freeze_panes='A2'
 
         buf_excel = io.BytesIO(); wb2.save(buf_excel); buf_excel.seek(0)
