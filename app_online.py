@@ -289,7 +289,7 @@ def fit_tg(x_mol_arr, Tg_arr, Tg_d):
 
 def make_visc_sheet_hydrous(wb, sheet_name, results, m_func, tg_model_func, hdr_color):
     ws = wb.create_sheet(sheet_name)
-    BLOCK=3; GAP=1; T_STEP=25
+    BLOCK=5; GAP=1; T_STEP=25
     for s_idx, r in enumerate(results):
         col_start = 1+s_idx*(BLOCK+GAP)
         Tg_f = tg_model_func(r['h2o_mol'])
@@ -304,7 +304,7 @@ def make_visc_sheet_hydrous(wb, sheet_name, results, m_func, tg_model_func, hdr_
         hdr.fill=PatternFill('solid',start_color=hdr_color)
         hdr.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
         hdr.border=brd
-        for ci,label in enumerate(['T (C)','T (K)','log10(visc/Pa.s)'],0):
+        for ci,label in enumerate(['T (C)','T (K)','Tg (K)','m','log10(visc/Pa.s)'],0):
             cell=ws.cell(row=2,column=col_start+ci,value=label)
             cell.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
             cell.fill=PatternFill('solid',start_color='37474F')
@@ -316,14 +316,23 @@ def make_visc_sheet_hydrous(wb, sheet_name, results, m_func, tg_model_func, hdr_
         T_list=list(range(T_first,int(T_max)+T_STEP,T_STEP))
         alt_f=PatternFill('solid',start_color='D6E4F0')
         wht_f=PatternFill('solid',start_color='FFFFFF')
+        # Column letters for this block
+        cT = get_column_letter(col_start+1)   # T (K)
+        cTg = get_column_letter(col_start+2)  # Tg (K)
+        cM = get_column_letter(col_start+3)   # m
+        cV = get_column_letter(col_start+4)   # visc formula
         for ri,tc in enumerate(T_list):
             row_n=3+ri; tk_val=tc+273.15
-            visc_v=round(float(myega_eq(tk_val,Tg_f,m_v)),4)
             fill=alt_f if ri%2==0 else wht_f
-            for ci,val in enumerate([float(tc),round(tk_val,2),visc_v],0):
+            for ci,val in enumerate([float(tc),round(tk_val,2),round(Tg_f,2),round(m_v,4)],0):
                 cell=ws.cell(row=row_n,column=col_start+ci,value=val)
                 cell.alignment=ctr; cell.border=brd; cell.fill=fill
-                if isinstance(val,float): cell.number_format='0.000'
+                if isinstance(val,float): cell.number_format='0.0000'
+            # MYEGA Excel formula: A + (12-A)*(Tg/T)*EXP((m/(12-A)-1)*(Tg/T-1))
+            _f = f'=-2.9+14.9*({cTg}{row_n}/{cT}{row_n})*EXP(({cM}{row_n}/14.9-1)*({cTg}{row_n}/{cT}{row_n}-1))'
+            cell_v=ws.cell(row=row_n,column=col_start+4,value=_f)
+            cell_v.alignment=ctr; cell_v.border=brd; cell_v.fill=fill
+            cell_v.number_format='0.0000'
         for ci in range(BLOCK):
             ws.column_dimensions[get_column_letter(col_start+ci)].width=14
         if s_idx<len(results)-1:
@@ -1523,45 +1532,6 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         make_visc_sheet_hydrous(wb2,'Visc_m_ExpSat',
             results, lambda x: float(m_poly(x)), tg_func, 'BF360C')
 
-        # Sheet 7: Global MYEGA hydrous model — T, Tg, m, log_visc (m_ExpSat)
-        ws_myega_g = wb2.create_sheet('MYEGA_Global_Hydrous')
-        _thin2=Side(style='thin',color='AAAAAA'); _brd2=Border(left=_thin2,right=_thin2,top=_thin2,bottom=_thin2)
-        _ctr2=Alignment(horizontal='center',vertical='center')
-        _hcols_g = ['H₂O (wt%)','H₂O (mol%)','T (°C)','T (K)','Tg (K)','Tg (°C)','m (ExpSat)','log₁₀(η/Pa·s)']
-        for ci,col in enumerate(_hcols_g,1):
-            _c=ws_myega_g.cell(row=1,column=ci,value=col)
-            _c.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
-            _c.fill=PatternFill('solid',start_color='1B5E20')
-            _c.alignment=_ctr2; _c.border=_brd2
-        ws_myega_g.row_dimensions[1].height=25
-        _row_g = 2
-        for r in results:
-            _x_mol = r['h2o_mol']
-            _Tg_x  = tg_func(_x_mol)
-            _m_x   = float(m_poly(_x_mol))
-            for _Tc in range(int((_Tg_x-273.15)//25)*25, 1625, 25):
-                _Tk = _Tc + 273.15
-                try:
-                    _lv = A_FIXED + (12-A_FIXED)*(_Tg_x/_Tk)*np.exp((_m_x/(12-A_FIXED)-1)*(_Tg_x/_Tk-1))
-                except:
-                    continue
-                _vals = [round(r['h2o_wt'],2), round(_x_mol,3), _Tc, round(_Tk,2),
-                         round(_Tg_x,2), round(_Tg_x-273.15,2), round(_m_x,4)]
-                for ci,v in enumerate(_vals,1):
-                    _cell=ws_myega_g.cell(row=_row_g,column=ci,value=v)
-                    _cell.alignment=_ctr2; _cell.border=_brd2
-                    if isinstance(v,float): _cell.number_format='0.0000'
-                    if _row_g%2==0: _cell.fill=PatternFill('solid',start_color='E8F5E9')
-                # Column H: interactive MYEGA Excel formula
-                _f = f'=-2.9+14.9*(E{_row_g}/D{_row_g})*EXP((G{_row_g}/14.9-1)*(E{_row_g}/D{_row_g}-1))'
-                _cell_h = ws_myega_g.cell(row=_row_g, column=8, value=_f)
-                _cell_h.alignment=_ctr2; _cell_h.border=_brd2
-                _cell_h.number_format='0.0000'
-                if _row_g%2==0: _cell_h.fill=PatternFill('solid',start_color='E8F5E9')
-                _row_g += 1
-        for ci in [1,2,4,5,6,7,8]: ws_myega_g.column_dimensions[get_column_letter(ci)].width=14
-        ws_myega_g.freeze_panes='A2'
-
         buf_excel = io.BytesIO(); wb2.save(buf_excel); buf_excel.seek(0)
         buf_fig2  = io.BytesIO(); fig2.savefig(buf_fig2,format='png',dpi=200,bbox_inches='tight')
         buf_fig2.seek(0)
@@ -1838,11 +1808,13 @@ showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temper
             buf_comb.seek(0)
             plt.close(fig_comb)
 
-            # Excel with raw data
+            # Excel with interactive MYEGA formulas
             wb_vh = Workbook()
             ws_vh = wb_vh.active; ws_vh.title = "Visc_vs_H2O"
-            vh_headers = ["H2O (wt%)", "H2O (mol%)",
-                          "log10_visc_m_constant", "log10_visc_m_Eq12", "log10_visc_m_poly"]
+            vh_headers = ["H2O (wt%)", "H2O (mol%)", "T (K)", "Tg (K)",
+                          "m_constant", "log10_visc_m_constant",
+                          "m_Eq12", "log10_visc_m_Eq12",
+                          "m_ExpSat", "log10_visc_m_ExpSat"]
             thin_vh = Side(style="thin", color="AAAAAA")
             brd_vh  = Border(left=thin_vh, right=thin_vh, top=thin_vh, bottom=thin_vh)
             ctr_vh  = Alignment(horizontal="center", vertical="center")
@@ -1856,18 +1828,30 @@ showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temper
             ws_vh.row_dimensions[1].height = 28
             alt_vh = PatternFill("solid", start_color="D6E4F0")
             wht_vh = PatternFill("solid", start_color="FFFFFF")
-            vc_arr  = vh["visc_const"]
-            veq_arr = vh["visc_eq12"]
-            vp_arr  = vh["visc_poly"]
-            for r,(hw,hm,vc,veq,vp) in enumerate(
-                    zip(h2o_wt, h2o_mol, vc_arr, veq_arr, vp_arr), 2):
+            T_fixed_K_vh = T_label + 273.15
+            for r, (hw, hm) in enumerate(zip(h2o_wt, h2o_mol), 2):
                 fill_vh = alt_vh if r%2==0 else wht_vh
-                for c,val in enumerate([round(float(hw),3), round(float(hm),3),
-                                        round(float(vc),4), round(float(veq),4),
-                                        round(float(vp),4)], 1):
-                    cell = ws_vh.cell(row=r, column=c, value=val)
+                Tg_val = tg_func_ss(float(hm))
+                m_cst  = m_const_func(float(hm))
+                m_eq   = m_eq12_func(float(hm))
+                m_pl   = m_poly_func(float(hm))
+                data_vals = [round(float(hw),3), round(float(hm),3),
+                             round(T_fixed_K_vh,2), round(Tg_val,2),
+                             round(m_cst,4), None,
+                             round(m_eq,4), None,
+                             round(m_pl,4), None]
+                for c, val in enumerate(data_vals, 1):
+                    if val is not None:
+                        cell = ws_vh.cell(row=r, column=c, value=val)
+                        cell.alignment=ctr_vh; cell.border=brd_vh
+                        cell.fill=fill_vh; cell.number_format="0.0000"
+                # MYEGA formulas: F=visc_const, H=visc_eq12, J=visc_poly
+                # All use C=T(K), D=Tg(K); m columns are E, G, I respectively
+                for col_v, col_m in [(6,'E'), (8,'G'), (10,'I')]:
+                    _f = f'=-2.9+14.9*(D{r}/C{r})*EXP(({col_m}{r}/14.9-1)*(D{r}/C{r}-1))'
+                    cell = ws_vh.cell(row=r, column=col_v, value=_f)
                     cell.alignment=ctr_vh; cell.border=brd_vh
-                    cell.fill=fill_vh; cell.number_format="0.000"
+                    cell.fill=fill_vh; cell.number_format="0.0000"
             ws_vh.freeze_panes = "A2"
             buf_xl_vh = io.BytesIO(); wb_vh.save(buf_xl_vh); buf_xl_vh.seek(0)
 
@@ -2446,13 +2430,44 @@ Viscosity models calibrated on specific compositions:
         with _vc2: st.metric("log₁₀(η) — A fitted",f"{lv_fit:.3f}",help=f"A={ams_A(axm_sp):.5f} | m={ams_m(axm_sp):.3f} | Tg={ams_tg(axm_sp)-273.15:.1f}°C")
 
         abuf_xl=io.BytesIO()
-        arows=[{'H2O (wt%)':h,'H2O (mol%)':round(ams_wt_mol(h),3),'T (°C)':Tc,'T (K)':Tc+273.15,
-                'log10_visc_A_fixed':round(ams_visc(Tc+273.15,ams_wt_mol(h),True),4),
-                'log10_visc_A_fitted':round(ams_visc(Tc+273.15,ams_wt_mol(h),False),4),
-                'Tg (K)':round(ams_tg(ams_wt_mol(h)),2),'m':round(ams_m(ams_wt_mol(h)),4),
-                'A_fixed':round(P['A_fixed'],5),'A_fitted':round(ams_A(ams_wt_mol(h)),5)}
-               for h in ax_list for Tc in np.arange(aT_min,aT_max+25,25)]
-        pd.DataFrame(arows).to_excel(abuf_xl,index=False,sheet_name='AMS_viscosity'); abuf_xl.seek(0)
+        _wb_ams=Workbook(); _ws_ams=_wb_ams.active; _ws_ams.title='AMS_viscosity'
+        _thin_a=Side(style='thin',color='AAAAAA'); _brd_a=Border(left=_thin_a,right=_thin_a,top=_thin_a,bottom=_thin_a)
+        _ctr_a=Alignment(horizontal='center',vertical='center')
+        _hdr_a=['H2O (wt%)','H2O (mol%)','T (°C)','T (K)','Tg (K)','m',
+                'A_fixed','log10_visc_A_fixed','A_fitted','log10_visc_A_fitted']
+        for ci,h in enumerate(_hdr_a,1):
+            _c=_ws_ams.cell(row=1,column=ci,value=h)
+            _c.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
+            _c.fill=PatternFill('solid',start_color='1B5E20')
+            _c.alignment=_ctr_a; _c.border=_brd_a
+        _ws_ams.row_dimensions[1].height=25
+        _row_a=2
+        for h in ax_list:
+            xm=ams_wt_mol(h)
+            for Tc in np.arange(aT_min,aT_max+25,25):
+                _vals=[h,round(xm,3),Tc,round(Tc+273.15,2),
+                       round(ams_tg(xm),2),round(ams_m(xm),4),
+                       round(P['A_fixed'],5),None,round(ams_A(xm),5),None]
+                for ci,v in enumerate(_vals,1):
+                    if v is not None:
+                        _cell=_ws_ams.cell(row=_row_a,column=ci,value=v)
+                        _cell.alignment=_ctr_a; _cell.border=_brd_a
+                        if isinstance(v,float): _cell.number_format='0.00000'
+                        if _row_a%2==0: _cell.fill=PatternFill('solid',start_color='E8F5E9')
+                # H=visc_A_fixed: G=A_fixed, E=Tg, D=T(K), F=m
+                _f1=f'=G{_row_a}+(12-G{_row_a})*(E{_row_a}/D{_row_a})*EXP((F{_row_a}/(12-G{_row_a})-1)*(E{_row_a}/D{_row_a}-1))'
+                _c1=_ws_ams.cell(row=_row_a,column=8,value=_f1)
+                _c1.alignment=_ctr_a; _c1.border=_brd_a; _c1.number_format='0.0000'
+                if _row_a%2==0: _c1.fill=PatternFill('solid',start_color='E8F5E9')
+                # J=visc_A_fitted: I=A_fitted, E=Tg, D=T(K), F=m
+                _f2=f'=I{_row_a}+(12-I{_row_a})*(E{_row_a}/D{_row_a})*EXP((F{_row_a}/(12-I{_row_a})-1)*(E{_row_a}/D{_row_a}-1))'
+                _c2=_ws_ams.cell(row=_row_a,column=10,value=_f2)
+                _c2.alignment=_ctr_a; _c2.border=_brd_a; _c2.number_format='0.0000'
+                if _row_a%2==0: _c2.fill=PatternFill('solid',start_color='E8F5E9')
+                _row_a+=1
+        for ci in range(1,11): _ws_ams.column_dimensions[get_column_letter(ci)].width=16
+        _ws_ams.freeze_panes='A2'
+        _wb_ams.save(abuf_xl); abuf_xl.seek(0)
         st.download_button("⬇️ Download Excel",data=abuf_xl,file_name="AMS_trachyte_viscosity.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="dl_ams_xl")
 
@@ -2555,11 +2570,34 @@ Viscosity models calibrated on specific compositions:
         st.metric("log\u2081\u2080(\u03b7 / Pa\u00b7s)",f"{hlv_sp:.3f}",help=f"A={hpg8_A(hx_sp):.4f} | Tg={hpg8_Tg(hx_sp)-273.15:.1f}\u00b0C | m={hpg8_m(hx_sp):.3f}")
 
         hbuf_xl=io.BytesIO()
-        hrows=[{'Excess Na2O (mol%)':x,'T (\u00b0C)':Tc,'T (K)':Tc+273.15,
-                'log10_visc':round(hpg8_visc(Tc+273.15,x),4),'A':round(hpg8_A(x),4),
-                'Tg (K)':round(hpg8_Tg(x),2),'m':round(hpg8_m(x),3)}
-               for x in hx_list for Tc in np.arange(hT_min,hT_max+25,25)]
-        pd.DataFrame(hrows).to_excel(hbuf_xl,index=False,sheet_name='HPG8_Na_viscosity'); hbuf_xl.seek(0)
+        _wb_hpg=Workbook(); _ws_hpg=_wb_hpg.active; _ws_hpg.title='HPG8_Na_viscosity'
+        _thin_h=Side(style='thin',color='AAAAAA'); _brd_h=Border(left=_thin_h,right=_thin_h,top=_thin_h,bottom=_thin_h)
+        _ctr_h=Alignment(horizontal='center',vertical='center')
+        _hdr_h=['Excess Na2O (mol%)','T (°C)','T (K)','Tg (K)','m','A','log10(visc/Pa.s)']
+        for ci,h in enumerate(_hdr_h,1):
+            _c=_ws_hpg.cell(row=1,column=ci,value=h)
+            _c.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
+            _c.fill=PatternFill('solid',start_color='1B5E20')
+            _c.alignment=_ctr_h; _c.border=_brd_h
+        _ws_hpg.row_dimensions[1].height=25
+        _row_h=2
+        for x in hx_list:
+            for Tc in np.arange(hT_min,hT_max+25,25):
+                _vals=[x,Tc,round(Tc+273.15,2),round(hpg8_Tg(x),2),round(hpg8_m(x),3),round(hpg8_A(x),4)]
+                for ci,v in enumerate(_vals,1):
+                    _cell=_ws_hpg.cell(row=_row_h,column=ci,value=v)
+                    _cell.alignment=_ctr_h; _cell.border=_brd_h
+                    if isinstance(v,float): _cell.number_format='0.0000'
+                    if _row_h%2==0: _cell.fill=PatternFill('solid',start_color='E8F5E9')
+                # G=visc formula: F=A, D=Tg(K), C=T(K), E=m
+                _f=f'=F{_row_h}+(12-F{_row_h})*(D{_row_h}/C{_row_h})*EXP((E{_row_h}/(12-F{_row_h})-1)*(D{_row_h}/C{_row_h}-1))'
+                _cv=_ws_hpg.cell(row=_row_h,column=7,value=_f)
+                _cv.alignment=_ctr_h; _cv.border=_brd_h; _cv.number_format='0.0000'
+                if _row_h%2==0: _cv.fill=PatternFill('solid',start_color='E8F5E9')
+                _row_h+=1
+        for ci in range(1,8): _ws_hpg.column_dimensions[get_column_letter(ci)].width=16
+        _ws_hpg.freeze_panes='A2'
+        _wb_hpg.save(hbuf_xl); hbuf_xl.seek(0)
         st.download_button("\u2b07\ufe0f Download Excel",data=hbuf_xl,file_name="HPG8_Na_viscosity.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",key="dl_hpg_xl")
 
@@ -2668,11 +2706,34 @@ Viscosity models calibrated on specific compositions:
         st.metric("log₁₀(η / Pa·s)",f"{alv_sp:.3f}",help=f"Tg={and_Tg(ax_sp):.1f}°C | m={and_m(ax_sp):.3f}")
 
         abuf_xl=io.BytesIO()
-        arows=[{'TM content (%)':x,'T (°C)':Tc,'T (K)':Tc+273.15,
-                'log10_visc':round(and_visc(Tc+273.15,x),4),
-                'Tg (°C)':round(and_Tg(x),2),'m':round(and_m(x),3)}
-               for x in ax_list for Tc in np.arange(aT_min,aT_max+25,25)]
-        pd.DataFrame(arows).to_excel(abuf_xl,index=False,sheet_name='Andesite_viscosity'); abuf_xl.seek(0)
+        _wb_and=Workbook(); _ws_and=_wb_and.active; _ws_and.title='Andesite_viscosity'
+        _thin_an=Side(style='thin',color='AAAAAA'); _brd_an=Border(left=_thin_an,right=_thin_an,top=_thin_an,bottom=_thin_an)
+        _ctr_an=Alignment(horizontal='center',vertical='center')
+        _hdr_an=['TM content (%)','T (°C)','T (K)','Tg (K)','m','A','log10(visc/Pa.s)']
+        for ci,h in enumerate(_hdr_an,1):
+            _c=_ws_and.cell(row=1,column=ci,value=h)
+            _c.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
+            _c.fill=PatternFill('solid',start_color='1B5E20')
+            _c.alignment=_ctr_an; _c.border=_brd_an
+        _ws_and.row_dimensions[1].height=25
+        _row_an=2
+        for x in ax_list:
+            for Tc in np.arange(aT_min,aT_max+25,25):
+                _vals=[x,Tc,round(Tc+273.15,2),round(and_Tg(x)+273.15,2),round(and_m(x),3),round(P['A'],4)]
+                for ci,v in enumerate(_vals,1):
+                    _cell=_ws_and.cell(row=_row_an,column=ci,value=v)
+                    _cell.alignment=_ctr_an; _cell.border=_brd_an
+                    if isinstance(v,float): _cell.number_format='0.0000'
+                    if _row_an%2==0: _cell.fill=PatternFill('solid',start_color='E8F5E9')
+                # G=visc formula: F=A, D=Tg(K), C=T(K), E=m
+                _f=f'=F{_row_an}+(12-F{_row_an})*(D{_row_an}/C{_row_an})*EXP((E{_row_an}/(12-F{_row_an})-1)*(D{_row_an}/C{_row_an}-1))'
+                _cv=_ws_and.cell(row=_row_an,column=7,value=_f)
+                _cv.alignment=_ctr_an; _cv.border=_brd_an; _cv.number_format='0.0000'
+                if _row_an%2==0: _cv.fill=PatternFill('solid',start_color='E8F5E9')
+                _row_an+=1
+        for ci in range(1,8): _ws_and.column_dimensions[get_column_letter(ci)].width=16
+        _ws_and.freeze_panes='A2'
+        _wb_and.save(abuf_xl); abuf_xl.seek(0)
         st.download_button('⬇️ Download Excel',data=abuf_xl,file_name='Andesite_viscosity.xlsx',
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',key='dl_and_xl')
 
@@ -2867,17 +2928,42 @@ Viscosity models calibrated on specific compositions:
         buf_s = io.BytesIO()
         T_step_dl = 25.0
         T_dl = np.arange(T_min_c, T_max_c + T_step_dl, T_step_dl)
-        rows_dl = []
+        _A_val = ACTIVE['A']
+        _m_cst = ACTIVE.get('m_d', ACTIVE.get('m', 35.0))
+        _wb_dl = Workbook()
+        _ws_dl = _wb_dl.active; _ws_dl.title = ACTIVE['name'].replace(' ','_')[:31]
+        _thin_dl = Side(style='thin', color='AAAAAA')
+        _brd_dl  = Border(left=_thin_dl,right=_thin_dl,top=_thin_dl,bottom=_thin_dl)
+        _ctr_dl  = Alignment(horizontal='center',vertical='center')
+        _hdr_dl = ['H2O (wt%)','H2O (mol%)','T (°C)','T (K)','Tg (K)','m','A','log10(visc/Pa.s)']
+        for ci,h in enumerate(_hdr_dl,1):
+            _c=_ws_dl.cell(row=1,column=ci,value=h)
+            _c.font=Font(name='Arial',bold=True,color='FFFFFF',size=9)
+            _c.fill=PatternFill('solid',start_color='1B5E20')
+            _c.alignment=_ctr_dl; _c.border=_brd_dl
+        _ws_dl.row_dimensions[1].height=25
+        _row_dl = 2
         for h2o_wt in h2o_list_s:
             x_mol = wt_to_mol(h2o_wt, ACTIVE)
             Tg_h  = strm_tg(x_mol, ACTIVE)
             for Tc in T_dl:
-                lv = strm_myega(Tc + 273.15, Tg_h, ACTIVE.get('m_d', ACTIVE.get('m', 35.0)), ACTIVE['A'])
-                rows_dl.append({'H2O (wt%)': h2o_wt, 'H2O (mol%)': round(x_mol, 3),
-                                'T (°C)': Tc, 'T (K)': Tc + 273.15,
-                                'log10_visc': round(lv, 4)})
-        pd.DataFrame(rows_dl).to_excel(buf_s, index=False, sheet_name='Stromboli_viscosity')
-        buf_s.seek(0)
+                _vals = [h2o_wt, round(x_mol,3), Tc, round(Tc+273.15,2),
+                         round(Tg_h,2), round(_m_cst,4), round(_A_val,4)]
+                for ci,v in enumerate(_vals,1):
+                    _cell=_ws_dl.cell(row=_row_dl,column=ci,value=v)
+                    _cell.alignment=_ctr_dl; _cell.border=_brd_dl
+                    if isinstance(v,float): _cell.number_format='0.0000'
+                    if _row_dl%2==0: _cell.fill=PatternFill('solid',start_color='E8F5E9')
+                # Col H: MYEGA formula — G=A, E=Tg(K), D=T(K), F=m
+                _f = f'=G{_row_dl}+(12-G{_row_dl})*(E{_row_dl}/D{_row_dl})*EXP((F{_row_dl}/(12-G{_row_dl})-1)*(E{_row_dl}/D{_row_dl}-1))'
+                _cell_v=_ws_dl.cell(row=_row_dl,column=8,value=_f)
+                _cell_v.alignment=_ctr_dl; _cell_v.border=_brd_dl
+                _cell_v.number_format='0.0000'
+                if _row_dl%2==0: _cell_v.fill=PatternFill('solid',start_color='E8F5E9')
+                _row_dl += 1
+        for ci in range(1,9): _ws_dl.column_dimensions[get_column_letter(ci)].width=14
+        _ws_dl.freeze_panes='A2'
+        _wb_dl.save(buf_s); buf_s.seek(0)
         st.download_button("⬇️ Download Excel", data=buf_s,
                            file_name=f"{ACTIVE['name'].replace(' ', '_')}_viscosity.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
