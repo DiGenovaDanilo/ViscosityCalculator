@@ -18,16 +18,19 @@ import matplotlib.cm as cm
 import matplotlib.patheffects as pe
 from scipy.optimize import brentq, minimize
 import streamlit as st
-import tensorflow as tf
+try:
+    import tflite_runtime.interpreter as tflite
+except ImportError:
+    import tensorflow.lite as tflite
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-import urllib.request, zipfile
+
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-PATH_MODEL = os.path.join(BASE_DIR, "model")
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+PATH_TFLITE = os.path.join(BASE_DIR, "model.tflite")
 sys.path.insert(0, BASE_DIR)
 
 # ── Version ───────────────────────────────────────────────────────────────────
@@ -44,22 +47,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ── Auto-download model from Zenodo ──────────────────────────────────────────
-ZENODO_URL = "https://zenodo.org/records/19945909/files/MELVIS_v1.zip"
-if not os.path.exists(PATH_MODEL):
-    with st.spinner("Downloading ANN model from Zenodo (first run only)..."):
-        zip_path = os.path.join(BASE_DIR, "MELVIS_v1.zip")
-        urllib.request.urlretrieve(ZENODO_URL, zip_path)
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            for member in z.namelist():
-                if 'model/' in member and not member.endswith('/MELVIS_v1/'):
-                    target = os.path.join(BASE_DIR, member.replace('MELVIS_v1/', '', 1))
-                    os.makedirs(os.path.dirname(target), exist_ok=True)
-                    if not member.endswith('/'):
-                        with z.open(member) as src, open(target, 'wb') as dst:
-                            dst.write(src.read())
-        os.remove(zip_path)
-    st.success("✅ Model downloaded successfully!")
+# ── Model check (model.tflite is shipped in the repo) ────────────────────────
+if not os.path.exists(PATH_TFLITE):
+    st.error("❌ model.tflite not found. Please check the repository.")
+    st.stop()
 
 def mol_conv(wt):
     """Convert wt% array to ANN normalised input, mol fractions and mol%.
@@ -151,7 +142,22 @@ A,77.63,0.11,12.73,3.03,0.03,0.06,0.92,4.44,1.62,0.0,0.0,0.0,0,"Di Genova et al.
 
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model(PATH_MODEL)
+    """Load the TFLite model and return a callable that behaves like
+    the old TF model(input_array) — drop-in replacement."""
+    interpreter = tflite.Interpreter(model_path=PATH_TFLITE)
+    interpreter.allocate_tensors()
+    inp_detail = interpreter.get_input_details()[0]
+    out_detail = interpreter.get_output_details()[0]
+
+    def predict(x):
+        x32 = np.asarray(x, dtype=np.float32)
+        if x32.ndim == 1:
+            x32 = x32.reshape(1, -1)
+        interpreter.set_tensor(inp_detail['index'], x32)
+        interpreter.invoke()
+        return interpreter.get_tensor(out_detail['index'])
+
+    return predict
 
 def redistribute_iron(wt):
     wt = wt.copy()
