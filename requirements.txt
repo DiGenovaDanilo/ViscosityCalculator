@@ -1,6 +1,6 @@
 streamlit
 tflite-runtime
-numpy
+numpy<2
 pandas
 matplotlib
 scipy
