@@ -409,10 +409,11 @@ Langhammer et al. (2021), *GGG*
 
 CSV with a **single anhydrous composition** (H₂O = 0).
 
-Same oxide columns as Mode 1.
+Same oxide columns as Module 1.
 
-The tool fits Tg(H₂O) with Eq. 9-10 and computes
-fragility m via Eq. 12 (Langhammer et al. 2021).
+The tool fits Tg(H₂O) with Eq. 9-10 (Langhammer et al., 2021) and offers
+three models for fragility m(H₂O): constant m, Eq. 12 of Langhammer et al. (2021),
+and an exponential saturation fit to ANN-derived m values.
         """)
         st.divider()
         st.markdown("""
@@ -467,18 +468,30 @@ Each model includes a TAS diagram, reference composition, and Excel export of vi
     st.markdown("""
 <div style="display:flex; align-items:center; gap:40px; margin-bottom:20px; flex-wrap:wrap;">
   <div style="text-align:center">
-    <img src="https://raw.githubusercontent.com/consiglionazionaledellericerche/cool-jconon/HEAD/cool-jconon-webapp-resources/src/main/resources/META-INF/img/logo-quadrato-en.png"
-         height="160" style="object-fit:contain"><br>
+    <a href="https://www.cnr.it/en" target="_blank">
+      <div style="background-color:white; padding:8px; border-radius:6px; display:inline-block;">
+        <img src="https://raw.githubusercontent.com/consiglionazionaledellericerche/cool-jconon/HEAD/cool-jconon-webapp-resources/src/main/resources/META-INF/img/logo-quadrato-en.png"
+             height="160" style="object-fit:contain; display:block;">
+      </div>
+    </a><br>
     <small style="color:gray">CNR</small>
   </div>
   <div style="text-align:center">
-    <img src="https://www.cnr.it/it/istituto/073/logo"
-         height="160" style="object-fit:contain"><br>
+    <a href="https://www.issmc.cnr.it/en/" target="_blank">
+      <div style="background-color:white; padding:8px; border-radius:6px; display:inline-block;">
+        <img src="https://www.cnr.it/it/istituto/073/logo"
+             height="160" style="object-fit:contain; display:block;">
+      </div>
+    </a><br>
     <small style="color:gray">CNR-ISSMC</small>
   </div>
   <div style="text-align:center">
-    <img src="https://erc.europa.eu/sites/default/files/inline-images/HE%20logo.png"
-         height="160" style="object-fit:contain"><br>
+    <a href="https://cordis.europa.eu/project/id/101044772" target="_blank">
+      <div style="background-color:white; padding:8px; border-radius:6px; display:inline-block;">
+        <img src="https://erc.europa.eu/sites/default/files/inline-images/HE%20logo.png"
+             height="160" style="object-fit:contain; display:block;">
+      </div>
+    </a><br>
     <small style="color:gray">ERC</small>
   </div>
 </div>
@@ -953,9 +966,11 @@ elif mode == "💧 Anhydrous and Hydrous Modelling":
 Model how **Tg, fragility index m and viscosity** evolve as a function of H₂O content.  
 Melt viscosity is calculated using the Artificial Neural Network (ANN) of
 [Langhammer et al. (2022)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2022GC010673).  
-The dependence of Tg and m on water content follows the framework of
+Tg(H₂O) is parameterised following the Gordon–Taylor framework of
 [Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918)
-(Eq. 9-10, 12).  
+(Eq. 9-10). Three models are offered for the fragility index m(H₂O): (i) constant m equal
+to the anhydrous value; (ii) m varying with Tg following Eq. 12 of Langhammer et al. (2021);
+and (iii) an exponential saturation fit to ANN-derived m values.  
 Upload a CSV with **one anhydrous composition** (H₂O = 0).
     """)
 
