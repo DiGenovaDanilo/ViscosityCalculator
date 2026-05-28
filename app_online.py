@@ -34,7 +34,7 @@ PATH_TFLITE = os.path.join(BASE_DIR, "model.tflite")
 sys.path.insert(0, BASE_DIR)
 
 # ── Version ───────────────────────────────────────────────────────────────────
-MELVIS_VERSION = "1.1.1"
+MELVIS_VERSION = "1.2.0"
 
 # ── Page config (MUST be first Streamlit call) ────────────────────────────────
 st.set_page_config(page_title="MELVIS — MELt VIScosity", page_icon="🌋", layout="wide")
