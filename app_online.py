@@ -288,7 +288,18 @@ def fit_tg(x_mol_arr, Tg_arr, Tg_d):
                         if best_rmse < 0.5:  # good enough — stop early
                             return best_p, best_rmse
                 except: pass
-    return best_p, best_rmse
+    
+    # Get parameter uncertainties via curve_fit covariance matrix
+    from scipy.optimize import curve_fit as _cf
+    def _model(x, b, c, d):
+        return np.array([tg_model(xi, b, c, d, Tg_d) for xi in x])
+    try:
+        _, pcov = _cf(_model, x_mol_arr, Tg_arr, p0=best_p,
+                      bounds=([0, -np.inf, -np.inf], np.inf), maxfev=5000)
+        errors = np.sqrt(np.diag(pcov))
+    except:
+        errors = np.array([np.nan, np.nan, np.nan])
+    return best_p, best_rmse, errors
 
 def make_visc_sheet_hydrous(wb, sheet_name, results, m_func, tg_model_func, hdr_color):
     ws = wb.create_sheet(sheet_name)
@@ -348,7 +359,13 @@ def make_visc_sheet_hydrous(wb, sheet_name, results, m_func, tg_model_func, hdr_
 for key in ['calc_done','all_curves','rows_recalc','tg_m_dict','skipped',
             'fig','df_input','rows_specific',
             'hyd_done','hyd_results','hyd_fig','hyd_buf_excel',
-            'hyd_buf_fig','hyd_meta','visc_h2o','wt_dry','non_mono','df_h_selected']:
+            'hyd_buf_fig','hyd_meta','visc_h2o','wt_dry','non_mono','df_h_selected',
+            'hyd_panel_bufs','hyd_panel_bufs_sname',
+            'visc_h2o_bufs','visc_h2o_bufs_key',
+            'visc_h2o_buf_comb','visc_h2o_buf_comb_pdf',
+            'visc_h2o_buf_all','visc_h2o_buf_all_pdf','visc_h2o_fig_all',
+            'visc_h2o_buf_xl',
+            'tas_buf','tas_buf_pdf','tas_buf_key']:
     if key not in st.session_state:
         st.session_state[key] = None
 if st.session_state['calc_done'] is None:
@@ -668,7 +685,7 @@ if mode == "🔥 Viscosity Calculator":
 
         progress.empty()
         ax.set_xlabel('Temperature (°C)',fontsize=13)
-        ax.set_ylabel('log₁₀(Viscosity / Pa·s)',fontsize=13)
+        ax.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)',fontsize=13)
         ax.legend(fontsize=8,loc='upper right',ncol=3,framealpha=0.7,handlelength=1.5)
         ax.grid(True,linestyle='--',alpha=0.5)
         plt.tight_layout()
@@ -814,10 +831,10 @@ if mode == "🔥 Viscosity Calculator":
 
             tas_color = st.selectbox(
                 "Color samples by:",
-                ["Tg (°C)", "Fragility m", "log₁₀η at custom T (°C)"],
+                ["Tg (°C)", "Fragility m", "log₁₀(η) at custom T (°C)"],
                 key="tas_color_sel")
 
-            if tas_color == "log₁₀η at custom T (°C)":
+            if tas_color == "log₁₀(η) at custom T (°C)":
                 T_tas = st.number_input("Temperature for η (°C):",
                                         min_value=500.0, max_value=1800.0,
                                         value=1200.0, step=50.0, key="tas_T")
@@ -826,13 +843,13 @@ if mode == "🔥 Viscosity Calculator":
                                    tg_m_dict[r['Sample']][1]))
                     for _, r in df_tas.iterrows()
                 ]
-                cbar_label = f'log₁₀(η / Pa·s) at {T_tas:.0f} °C'
+                cbar_label = r'log$_{10}$($\mathit{\eta}$ / Pa·s) at ' + f'{T_tas:.0f} °C'
             elif tas_color == "Tg (°C)":
                 df_tas['color_val'] = df_tas['Tg_C']
-                cbar_label = 'Tg (°C)'
+                cbar_label = '$T_g$ (°C)'
             else:
                 df_tas['color_val'] = df_tas['m']
-                cbar_label = 'Fragility index m'
+                cbar_label = 'Fragility index $\\mathit{m}$'
 
             # ── Draw TAS diagram ──────────────────────────────────────────────────
             fig_tas, ax_tas = plt.subplots(figsize=(10, 7))
@@ -875,25 +892,29 @@ if mode == "🔥 Viscosity Calculator":
             ax_tas.set_ylim(0, 17)
             ax_tas.set_xlabel('SiO₂ (wt%)', fontsize=12)
             ax_tas.set_ylabel('Na₂O + K₂O (wt%)', fontsize=12)
-            ax_tas.set_title('TAS diagram — ' + cbar_label, fontsize=12, fontweight='bold')
+            ax_tas.set_title('TAS diagram — ' + cbar_label, fontsize=12)
             ax_tas.grid(True, linestyle='--', alpha=0.3, zorder=0)
             plt.tight_layout()
 
             st.pyplot(fig_tas)
 
-            buf_tas = io.BytesIO()
-            fig_tas.savefig(buf_tas, format='png', dpi=200, bbox_inches='tight')
-            buf_tas_pdf = _fig_to_pdf(fig_tas)
-            buf_tas.seek(0)
+            _tas_key = str(tas_color) + str(getattr(locals(), 'T_tas', ''))
+            if st.session_state['tas_buf_key'] != _tas_key:
+                _b = io.BytesIO()
+                fig_tas.savefig(_b, format='png', dpi=200, bbox_inches='tight')
+                _b.seek(0)
+                st.session_state['tas_buf']     = _b
+                st.session_state['tas_buf_pdf'] = _fig_to_pdf(fig_tas)
+                st.session_state['tas_buf_key'] = _tas_key
             plt.close(fig_tas)
 
             st.download_button("⬇️ Download TAS plot (PNG)",
-                               data=buf_tas,
+                               data=st.session_state['tas_buf'],
                                file_name="TAS_diagram.png",
                                mime="image/png",
                                key="dl_tas")
             st.download_button("⬇️ Download TAS plot (PDF)",
-                               data=buf_tas_pdf,
+                               data=st.session_state['tas_buf_pdf'],
                                file_name="TAS_diagram.pdf",
                                mime="application/pdf",
                                key="dl_tas_pdf")
@@ -962,17 +983,19 @@ if mode == "🔥 Viscosity Calculator":
 elif mode == "💧 Anhydrous and Hydrous Modelling":
 
     st.title("💧 Anhydrous and Hydrous Modelling")
-    st.markdown("""
-Model how **Tg, fragility index m and viscosity** evolve as a function of H₂O content.  
-Melt viscosity is calculated using the Artificial Neural Network (ANN) of
-[Langhammer et al. (2022)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2022GC010673).  
-Tg(H₂O) is parameterised following the Gordon–Taylor framework of
-[Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918)
-(Eq. 9-10). Three models are offered for the fragility index m(H₂O): (i) constant m equal
-to the anhydrous value; (ii) m varying with Tg following Eq. 12 of Langhammer et al. (2021);
-and (iii) an exponential saturation fit to ANN-derived m values.  
-Upload a CSV with **one anhydrous composition** (H₂O = 0).
-    """)
+    st.markdown(
+        "Model how ***T*<sub>g</sub>, fragility index *m* and viscosity** evolve as a function of H₂O content.  \n"
+        "Melt viscosity is calculated using the Artificial Neural Network (ANN) of "
+        "[Langhammer et al. (2022)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2022GC010673).  \n"
+        "<i>T</i><sub>g</sub>(H₂O) is parameterised following the Gordon–Taylor framework of "
+        "[Langhammer et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021GC009918) "
+        "(Eq. 9-10). Three models are offered for the fragility index <i>m</i>(H₂O): "
+        "(i) constant <i>m</i> equal to the anhydrous value; "
+        "(ii) <i>m</i> varying with <i>T</i><sub>g</sub> following Eq. 12 of Langhammer et al. (2021); "
+        "and (iii) an exponential saturation fit to ANN-derived <i>m</i> values.  \n"
+        "Upload a CSV with **one anhydrous composition** (H₂O = 0).",
+        unsafe_allow_html=True
+    )
 
     with st.expander("📖 How to use this mode — read first", expanded=False):
         st.markdown("""
@@ -985,9 +1008,9 @@ of Langhammer et al. (2021).
 1. **Upload a CSV** with one row containing your anhydrous composition in wt% oxides (H₂O = 0).
 2. **Set H₂O contents** — the tool will recalculate the ANN viscosity at each water content
    you specify (e.g. 0, 0.5, 1, 2, 3, 4, 5 wt%). Always include 0.
-3. **Click Run** — the ANN calculates Tg and m at each water content. Then:
-   - **Tg(H₂O)** is fitted using Eq. 9-10 (Schneider/Gordon-Taylor model, three free parameters b, c, d)
-   - **m(H₂O)** is modelled in three ways (see below)
+3. **Click Run** — the ANN calculates *T*<sub>g</sub> and *m* at each water content. Then:
+   - ***T*<sub>g</sub>(H₂O)** is fitted using Eq. 9-10 (Schneider/Gordon-Taylor model, three free parameters *b*, *c*, *d*)
+   - ***m*(H₂O)** is modelled in three ways (see below)
    - **Viscosity curves** are generated for each m model
 4. **Download** the Excel file with all results and the plot as PNG.
 
@@ -997,8 +1020,8 @@ alkalis from 0 to 17 wt%. Results outside this range may be unreliable.
 Always verify that your composition falls within the training domain of the model.
 
 ### What the diamond markers mean
-The ♦ diamond on each viscosity curve marks the **glass transition temperature Tg**,
-defined as the temperature at which log₁₀(η) = 12 Pa·s.
+The ♦ diamond on each viscosity curve marks the **glass transition temperature *T*<sub>g</sub>**,
+defined as the temperature at which log₁₀(*η*) = 12 Pa·s.
     """)
 
     # ── Input method selector ─────────────────────────────────────────────────
@@ -1258,7 +1281,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
 
         # Fit Tg(x_H2O) — Eq. 9-10
         with st.spinner("Fitting Tg(H₂O) with Eq. 9-10..."):
-            (b_fit, c_fit, d_fit), tg_rmse = fit_tg(x_mol_arr, Tg_arr, Tg_d)
+            (b_fit, c_fit, d_fit), tg_rmse, tg_errors = fit_tg(x_mol_arr, Tg_arr, Tg_d)
 
         # ── Physical filter for m ─────────────────────────────────────────────
         # Physical constraint: m(H2O) must be <= m_d (anhydrous value).
@@ -1344,7 +1367,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         # ── Figure: 5 panels ─────────────────────────────────────────────────
         colors_visc = cm.plasma(np.linspace(0.1, 0.9, len(results)))
         fig2, axes = plt.subplots(1, 5, figsize=(26, 5))
-        fig2.suptitle(f"Anhydrous & Hydrous Modelling — {sname}", fontsize=13, fontweight='bold')
+        fig2.suptitle(f"Anhydrous & Hydrous Modelling — {sname}", fontsize=13)
 
         # Panel 1: Tg vs H2O
         ax1 = axes[0]
@@ -1352,7 +1375,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         ax1.plot(x_smooth, Tg_smooth-273.15, 'steelblue', linewidth=2,
                  label='Eq.9-10 fit\nb={:.3f}\nc={:.3f}\nd={:.3f}'.format(b_fit,c_fit,d_fit))
         ax1.set_xlabel('H$_2$O (mol%)', fontsize=11)
-        ax1.set_ylabel('Tg (°C)', fontsize=11)
+        ax1.set_ylabel('$T_g$ (°C)', fontsize=11)
         ax1.set_title('Glass transition temperature', fontsize=11)
         ax1.legend(fontsize=7, loc='lower left'); ax1.grid(True, linestyle='--', alpha=0.4)
 
@@ -1371,9 +1394,9 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                         marker='x', linewidths=2, zorder=5, label='ANN (excluded)')
         ax2.plot(x_smooth, m_eq12_sm, 'tomato', linewidth=2, linestyle='--', label='Eq. 12, Langhammer et al. (2021)')
         ax2.plot(x_smooth, m_poly_sm, 'darkorange', linewidth=2, label='Exp. saturation (ANN)')
-        ax2.axhline(m_d, color='steelblue', linewidth=2, linestyle=':', label='m constant = {:.2f}'.format(m_d))
+        ax2.axhline(m_d, color='steelblue', linewidth=2, linestyle=':', label='$\\mathit{{m}}$ constant = {:.2f} (δ = 1.04)'.format(m_d))
         ax2.set_xlabel('H$_2$O (mol%)', fontsize=11)
-        ax2.set_ylabel('Fragility index m', fontsize=11)
+        ax2.set_ylabel('Fragility index $\\mathit{m}$', fontsize=11)
         ax2.set_title('Fragility index — three models', fontsize=11)
         ax2.legend(fontsize=7, loc='lower left'); ax2.grid(True, linestyle='--', alpha=0.4)
 
@@ -1389,7 +1412,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                         color=colors_visc[i], linewidth=2,
                         label='{:.1f} wt%'.format(r['h2o_wt']))
             ax.set_xlabel('Temperature (°C)', fontsize=11)
-            ax.set_ylabel('log$_{10}$(η / Pa·s)', fontsize=11)
+            ax.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)', fontsize=11)
             ax.set_title(title, fontsize=11)
             ax.legend(fontsize=7, loc='upper right')
             ax.grid(True, linestyle='--', alpha=0.4)
@@ -1576,6 +1599,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             'sname':sname, 'Tg_d':Tg_d, 'm_d':m_d,
             'b':b_fit, 'c':c_fit, 'd':d_fit,
             'tg_rmse':tg_rmse, 'poly_deg':poly_deg,
+            'b_err':tg_errors[0], 'c_err':tg_errors[1], 'd_err':tg_errors[2],
             'poly_params': _poly_params,
             'poly_label': poly_label,
         }
@@ -1585,14 +1609,20 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
         meta = st.session_state['hyd_meta']
 
         st.subheader("📈 Results")
-        st.markdown(f"""
-**Tg_dry** = {meta['Tg_d']-273.15:.1f} °C &nbsp;|&nbsp;
-**m_dry** = {meta['m_d']:.2f} &nbsp;|&nbsp;
-**Tg fit:** b={meta['b']:.4f}, c={meta['c']:.4f}, d={meta['d']:.4f} &nbsp;|&nbsp;
-**RMSE** = {meta['tg_rmse']:.2f} K
-        """)
+        def _fmt_err(v):
+            return f"{v:.4f}" if (v is not None and np.isfinite(v)) else "n/a"
+        st.markdown(
+            f"<i>T</i><sub><i>g,d</i></sub> = {meta['Tg_d']-273.15:.1f} ± 7.2 °C &nbsp;|&nbsp; "
+            f"<i>m</i><sub><i>d</i></sub> = {meta['m_d']:.2f} (δ<i>m</i> = 1.04) &nbsp;|&nbsp; "
+            f"<i>T</i><sub><i>g</i></sub> fit: "
+            f"<i>b</i> = {meta['b']:.4f} ± {_fmt_err(meta.get('b_err'))}, "
+            f"<i>c</i> = {meta['c']:.4f} ± {_fmt_err(meta.get('c_err'))}, "
+            f"<i>d</i> = {meta['d']:.4f} ± {_fmt_err(meta.get('d_err'))} "
+            f"&nbsp;|&nbsp; RMSE = {meta['tg_rmse']:.2f} K",
+            unsafe_allow_html=True
+        )
         if st.session_state.get('non_mono'):
-            st.warning("⚠️ **Non-monotone m (ANN)**: the ANN produces m values that are not monotonically decreasing with H₂O content. Only monotone decreasing points were used for the exponential saturation fit. See Langhammer et al. (2021).")
+            st.warning("⚠️ **Non-monotone *m* (ANN)**: the ANN produces *m* values that are not monotonically decreasing with H₂O content. Only monotone decreasing points were used for the exponential saturation fit. See Langhammer et al. (2021).")
         st.pyplot(st.session_state['hyd_fig'])
 
         # ── Individual panel downloads ─────────────────────────────────────────
@@ -1628,7 +1658,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
 
         def make_single_fig(panel_func, title):
             fig_s, ax_s = plt.subplots(figsize=(6, 5))
-            fig_s.suptitle(f"{sname_ss} — {title}", fontsize=11, fontweight='bold')
+            fig_s.suptitle(f"{sname_ss} — {title}", fontsize=11)
             panel_func(ax_s)
             plt.tight_layout()
             buf = io.BytesIO()
@@ -1642,7 +1672,7 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
             ax.scatter(x_mol_arr_ss, Tg_arr_ss-273.15, color='steelblue', s=60, zorder=5, label='ANN')
             ax.plot(x_smooth_ss, Tg_smooth_ss-273.15, 'steelblue', linewidth=2,
                     label='Eq.9-10 fit  b={:.3f}, c={:.3f}, d={:.3f}'.format(b_ss,c_ss,d_ss))
-            ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Tg (°C)')
+            ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('$T_g$ (°C)')
             ax.set_title('Glass transition temperature'); ax.legend(fontsize=8, loc='lower left'); ax.grid(True,linestyle='--',alpha=0.4)
 
         def panel_m(ax):
@@ -1654,15 +1684,15 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                 if m_arr_ss[_ii] <= _m_run_ss:
                     _mono_mask_ss[_ii] = True; _m_run_ss = m_arr_ss[_ii]
             ax.scatter(x_mol_arr_ss[_mono_mask_ss], m_arr_ss[_mono_mask_ss],
-                       color='tomato', s=60, zorder=5, label='ANN (used for fit)')
+                       color='tomato', s=60, zorder=5, label='ANN')
             if not np.all(_mono_mask_ss):
                 ax.scatter(x_mol_arr_ss[~_mono_mask_ss], m_arr_ss[~_mono_mask_ss],
                            color='lightgray', s=60, marker='x', linewidths=2,
                            zorder=5, label='ANN (excluded)')
             ax.plot(x_smooth_ss, m_eq12_sm_ss, 'tomato', linewidth=2, linestyle='--', label='Eq. 12, Langhammer et al. (2021)')
             ax.plot(x_smooth_ss, m_poly_sm_ss, 'darkorange', linewidth=2, label='Exp. saturation (ANN)')
-            ax.axhline(m_d_ss, color='steelblue', linewidth=2, linestyle=':', label='m constant = {:.2f}'.format(m_d_ss))
-            ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Fragility index m')
+            ax.axhline(m_d_ss, color='steelblue', linewidth=2, linestyle=':', label='$\\mathit{{m}}$ constant = {:.2f}'.format(m_d_ss))
+            ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Fragility index $\\mathit{m}$')
             ax.set_title('Fragility index'); ax.legend(fontsize=8, loc='lower left'); ax.grid(True,linestyle='--',alpha=0.4)
 
         def panel_visc(ax, m_func, title):
@@ -1674,22 +1704,31 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
                 T_arr2 = np.arange(Tg_f, T_max+50, 25)
                 ax.plot(T_arr2-273.15, myega_eq(T_arr2,Tg_f,m_v), color=colors_ss[i],
                         linewidth=2, label='{:.1f} wt%'.format(r['h2o_wt']))
-            ax.set_xlabel('Temperature (°C)'); ax.set_ylabel('log₁₀(η / Pa·s)')
+            ax.set_xlabel('Temperature (°C)'); ax.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)')
             ax.set_title(title); ax.legend(fontsize=7,loc='upper right'); ax.grid(True,linestyle='--',alpha=0.4)
 
         col_dl = st.columns(5)
         panels = [
-            ("Tg_vs_H2O",      "Tg vs H₂O",             panel_tg,  None),
-            ("m_vs_H2O",       "m vs H₂O",               panel_m,   None),
-            ("Visc_m_constant","Visc — m constant",       None,      m_const_func),
-            ("Visc_m_Eq12",    "Visc — m Eq.12, Langhammer et al. (2021)",          None,      m_eq12_func),
-            ("Visc_m_ExpSat",    "Visc — m Exp.Sat.",           None,      m_poly_func),
+            ("Tg_vs_H2O",       "$T_g$ vs H₂O",                                          panel_tg,  None),
+            ("m_vs_H2O",        "$\\mathit{m}$ vs H₂O",                                  panel_m,   None),
+            ("Visc_m_constant", "Visc — $\\mathit{m}$ constant",                          None,      m_const_func),
+            ("Visc_m_Eq12",     "Visc — $\\mathit{m}$ Eq. 12, Langhammer et al. (2021)", None,      m_eq12_func),
+            ("Visc_m_ExpSat",   "Visc — $\\mathit{m}$ Exp.Sat.",                          None,      m_poly_func),
         ]
+        if 'hyd_panel_bufs' not in st.session_state or \
+                st.session_state.get('hyd_panel_bufs_sname') != sname_ss:
+            _panel_bufs = {}
+            for _fname, _label, _pf, _mf in panels:
+                if _pf is not None:
+                    _b, _bpdf = make_single_fig(_pf, _label)
+                else:
+                    _b, _bpdf = make_single_fig(
+                        lambda ax, mf=_mf, lbl=_label: panel_visc(ax, mf, lbl), _label)
+                _panel_bufs[_fname] = (_b, _bpdf)
+            st.session_state['hyd_panel_bufs'] = _panel_bufs
+            st.session_state['hyd_panel_bufs_sname'] = sname_ss
         for col, (fname, label, pf, mf) in zip(col_dl, panels):
-            if pf is not None:
-                buf_s, buf_s_pdf = make_single_fig(pf, label)
-            else:
-                buf_s, buf_s_pdf = make_single_fig(lambda ax, mf=mf, label=label: panel_visc(ax, mf, label), label)
+            buf_s, buf_s_pdf = st.session_state['hyd_panel_bufs'][fname]
             with col:
                 st.download_button(f"⬇️ {label} (PNG)", data=buf_s,
                     file_name=f"{sname_ss}_{fname}.png", mime="image/png",
@@ -1721,13 +1760,14 @@ defined as the temperature at which log₁₀(η) = 12 Pa·s.
 
         st.divider()
         st.subheader("🌡️ Viscosity vs H₂O at a fixed temperature")
-        st.markdown("""
-Do you want to simulate how viscosity changes with decreasing water content
-at a fixed temperature? This generates three plots — one per fragility model —
-showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temperature you choose.
-        """)
+        st.markdown(
+            "Do you want to simulate how viscosity changes with decreasing water content "
+            "at a fixed temperature? This generates three plots — one per fragility model — "
+            "showing **log₁₀(*η*)** as a function of **H₂O content (wt%)** at the temperature you choose.",
+            unsafe_allow_html=True
+        )
 
-        do_visc_vs_h2o = st.checkbox("Yes, calculate viscosity vs H₂O at fixed T")
+        do_visc_vs_h2o = st.checkbox("Yes, calculate viscosity vs H₂O at fixed *T*")
 
         if do_visc_vs_h2o:
             col_t1, col_t2, col_t3 = st.columns(3)
@@ -1787,8 +1827,8 @@ showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temper
             pd_v     = vh['poly_deg']
 
             model_specs = [
-                ('m_constant', f'm = constant = {m_d_ss:.2f}',     vh['visc_const'], 'steelblue'),
-                ('m_Eq12',     'm Eq.12, Langhammer et al. (2021)',                      vh['visc_eq12'],  'tomato'),
+                ('m_constant', f'$\\mathit{{m}}$ constant = {m_d_ss:.2f}',     vh['visc_const'], 'steelblue'),
+                ('m_Eq12',     '$\\mathit{m}$ Eq. 12, Langhammer et al. (2021)',  vh['visc_eq12'],  'tomato'),
                 (f'm_poly_deg{pd_v}', 'Exp. saturation (ANN)',   vh['visc_poly'],  'darkorange'),
             ]
 
@@ -1804,45 +1844,65 @@ showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temper
                 x_sm = np.linspace(x_arr[valid][0], x_arr[valid][-1], n)
                 return x_sm, interp(x_sm)
 
+            # Cache key based on sample + T + H2O range
+            _vh_cache_key = f"{sname_v}_{T_label}_{h2o_wt[0]:.2f}_{h2o_wt[-1]:.2f}_{len(h2o_wt)}"
+            _need_regen = st.session_state['visc_h2o_bufs_key'] != _vh_cache_key
+
+            if _need_regen:
+                _bufs_vh_new = []
+                _figs_vh = []
+                for mkey, mlabel, visc_vals, mcolor in model_specs:
+                    varr = np.array(visc_vals, dtype=float)
+                    x_sm, y_sm = _smooth_fit(h2o_wt, varr)
+                    fig_vh, ax_vh = plt.subplots(figsize=(6, 5))
+                    ax_vh.plot(x_sm, y_sm, color=mcolor, linewidth=2.5)
+                    ax_vh.set_xlabel("H$_2$O (wt%)", fontsize=12)
+                    ax_vh.set_ylabel(r'log$_{10}$($\eta$ / Pa$\cdot$s)', fontsize=12)
+                    ax_vh.set_title("{} — $\\mathit{{T}}$ = {:.0f} °C — {}".format(sname_v, T_label, mlabel),
+                                    fontsize=10)
+                    ax_vh.grid(True, linestyle="--", alpha=0.5)
+                    plt.tight_layout()
+                    buf_vh_i = io.BytesIO()
+                    fig_vh.savefig(buf_vh_i, format="png", dpi=200, bbox_inches="tight")
+                    buf_vh_i.seek(0)
+                    buf_vh_i_pdf = _fig_to_pdf(fig_vh)
+                    _bufs_vh_new.append((mkey, buf_vh_i, buf_vh_i_pdf, fig_vh))
+                    _figs_vh.append(fig_vh)
+                st.session_state['visc_h2o_bufs'] = _bufs_vh_new
+                st.session_state['visc_h2o_bufs_key'] = _vh_cache_key
+
             cols_vh = st.columns(3)
             bufs_vh = []
-            for col, (mkey, mlabel, visc_vals, mcolor) in zip(cols_vh, model_specs):
-                varr = np.array(visc_vals, dtype=float)
-                x_sm, y_sm = _smooth_fit(h2o_wt, varr)
-                fig_vh, ax_vh = plt.subplots(figsize=(6, 5))
-                ax_vh.plot(x_sm, y_sm, color=mcolor, linewidth=2.5)
-                ax_vh.set_xlabel("H$_2$O (wt%)", fontsize=12)
-                ax_vh.set_ylabel(r'log$_{10}$($\eta$ / Pa$\cdot$s)', fontsize=12)
-                ax_vh.set_title("{} - T = {:.0f} C - {}".format(sname_v, T_label, mlabel),
-                                fontsize=10, fontweight="bold")
-                ax_vh.grid(True, linestyle="--", alpha=0.5)
-                plt.tight_layout()
+            for col, entry in zip(cols_vh, st.session_state['visc_h2o_bufs']):
+                mkey, buf_vh_i, buf_vh_i_pdf, fig_vh = entry
                 with col: st.pyplot(fig_vh)
-                buf_vh_i = io.BytesIO()
-                fig_vh.savefig(buf_vh_i, format="png", dpi=200, bbox_inches="tight")
-                buf_vh_i.seek(0)
-                buf_vh_i_pdf = _fig_to_pdf(fig_vh)
                 bufs_vh.append((mkey, buf_vh_i, buf_vh_i_pdf))
-                plt.close(fig_vh)
+            if _need_regen:
+                for entry in st.session_state['visc_h2o_bufs']:
+                    plt.close(entry[3])
 
-            # Combined figure
-            fig_comb, axes_comb = plt.subplots(1, 3, figsize=(18, 5))
-            fig_comb.suptitle("{} - Viscosity vs H2O at T = {:.0f} C".format(sname_v, T_label),
-                              fontsize=13, fontweight="bold")
-            for ax_c, (mkey, mlabel, visc_vals, mcolor) in zip(axes_comb, model_specs):
-                varr = np.array(visc_vals, dtype=float)
-                x_sm, y_sm = _smooth_fit(h2o_wt, varr)
-                ax_c.plot(x_sm, y_sm, color=mcolor, linewidth=2.5)
-                ax_c.set_xlabel("H$_2$O (wt%)", fontsize=11)
-                ax_c.set_ylabel(r'log$_{10}$($\eta$ / Pa$\cdot$s)', fontsize=11)
-                ax_c.set_title(mlabel, fontsize=11)
-                ax_c.grid(True, linestyle="--", alpha=0.5)
-            plt.tight_layout()
-            buf_comb = io.BytesIO()
-            fig_comb.savefig(buf_comb, format="png", dpi=200, bbox_inches="tight")
-            buf_comb.seek(0)
-            buf_comb_pdf = _fig_to_pdf(fig_comb)
-            plt.close(fig_comb)
+            # Combined figure (cached)
+            if _need_regen:
+                fig_comb, axes_comb = plt.subplots(1, 3, figsize=(18, 5))
+                fig_comb.suptitle("{} — Viscosity vs H₂O at $\\mathit{{T}}$ = {:.0f} °C".format(sname_v, T_label),
+                                  fontsize=13)
+                for ax_c, (mkey, mlabel, visc_vals, mcolor) in zip(axes_comb, model_specs):
+                    varr = np.array(visc_vals, dtype=float)
+                    x_sm, y_sm = _smooth_fit(h2o_wt, varr)
+                    ax_c.plot(x_sm, y_sm, color=mcolor, linewidth=2.5)
+                    ax_c.set_xlabel("H$_2$O (wt%)", fontsize=11)
+                    ax_c.set_ylabel(r'log$_{10}$($\eta$ / Pa$\cdot$s)', fontsize=11)
+                    ax_c.set_title(mlabel, fontsize=11)
+                    ax_c.grid(True, linestyle="--", alpha=0.5)
+                plt.tight_layout()
+                _bc = io.BytesIO()
+                fig_comb.savefig(_bc, format="png", dpi=200, bbox_inches="tight")
+                _bc.seek(0)
+                st.session_state['visc_h2o_buf_comb']     = _bc
+                st.session_state['visc_h2o_buf_comb_pdf'] = _fig_to_pdf(fig_comb)
+                plt.close(fig_comb)
+            buf_comb     = st.session_state['visc_h2o_buf_comb']
+            buf_comb_pdf = st.session_state['visc_h2o_buf_comb_pdf']
 
             # Excel with interactive MYEGA formulas
             wb_vh = Workbook()
@@ -1889,30 +1949,36 @@ showing **log₁₀(η)** as a function of **H₂O content (wt%)** at the temper
                     cell.alignment=ctr_vh; cell.border=brd_vh
                     cell.fill=fill_vh; cell.number_format="0.0000"
             ws_vh.freeze_panes = "A2"
-            buf_xl_vh = io.BytesIO(); wb_vh.save(buf_xl_vh); buf_xl_vh.seek(0)
+            _bx = io.BytesIO(); wb_vh.save(_bx); _bx.seek(0)
+            st.session_state['visc_h2o_buf_xl'] = _bx
+            buf_xl_vh = st.session_state['visc_h2o_buf_xl']
 
-            # 4th plot: all three models together
-            fig_all, ax_all = plt.subplots(figsize=(6, 5))
-            fig_all.suptitle("{} - T = {:.0f} C - All models".format(sname_v, T_label),
-                             fontsize=11, fontweight="bold")
-            ls_list = ["-", "--", ":"]
-            for (mkey, mlabel, visc_vals, mcolor), ls in zip(model_specs, ls_list):
-                varr4 = np.array(visc_vals, dtype=float)
-                x_sm4, y_sm4 = _smooth_fit(h2o_wt, varr4)
-                ax_all.plot(x_sm4, y_sm4, color=mcolor, linewidth=2.5, linestyle=ls, label=mlabel)
-            
-            ax_all.set_xlabel("H$_2$O (wt%)", fontsize=12)
-            ax_all.set_ylabel(r"log$_{10}$($\eta$ / Pa$\cdot$s)", fontsize=12)
-            ax_all.legend(fontsize=9, loc='lower left'); ax_all.grid(True, linestyle="--", alpha=0.5)
-            plt.tight_layout()
-            st.pyplot(fig_all)
-            buf_all = io.BytesIO()
-            fig_all.savefig(buf_all, format="png", dpi=200, bbox_inches="tight")
-            buf_all.seek(0)
-            buf_all_pdf = _fig_to_pdf(fig_all)
-            plt.close(fig_all)
+            # 4th plot: all three models together (cached)
+            if _need_regen:
+                fig_all, ax_all = plt.subplots(figsize=(6, 5))
+                fig_all.suptitle("{} — $\\mathit{{T}}$ = {:.0f} °C — All models".format(sname_v, T_label),
+                                 fontsize=11)
+                ls_list = ["-", "--", ":"]
+                for (mkey, mlabel, visc_vals, mcolor), ls in zip(model_specs, ls_list):
+                    varr4 = np.array(visc_vals, dtype=float)
+                    x_sm4, y_sm4 = _smooth_fit(h2o_wt, varr4)
+                    ax_all.plot(x_sm4, y_sm4, color=mcolor, linewidth=2.5, linestyle=ls, label=mlabel)
+                ax_all.set_xlabel("H$_2$O (wt%)", fontsize=12)
+                ax_all.set_ylabel(r"log$_{10}$($\eta$ / Pa$\cdot$s)", fontsize=12)
+                ax_all.legend(fontsize=9, loc='lower left'); ax_all.grid(True, linestyle="--", alpha=0.5)
+                plt.tight_layout()
+                st.session_state['visc_h2o_fig_all'] = fig_all
+                _ba = io.BytesIO()
+                fig_all.savefig(_ba, format="png", dpi=200, bbox_inches="tight")
+                _ba.seek(0)
+                st.session_state['visc_h2o_buf_all']     = _ba
+                st.session_state['visc_h2o_buf_all_pdf'] = _fig_to_pdf(fig_all)
+                plt.close(fig_all)
+            st.pyplot(st.session_state['visc_h2o_fig_all'])
+            buf_all     = st.session_state['visc_h2o_buf_all']
+            buf_all_pdf = st.session_state['visc_h2o_buf_all_pdf']
 
-            st.subheader("Download viscosity vs H2O")
+            st.subheader("Download viscosity vs H₂O")
             dl_cols = st.columns(5)
             with dl_cols[0]:
                 st.download_button("Combined (PNG)", data=buf_comb,
@@ -2317,7 +2383,7 @@ Viscosity models calibrated on specific compositions:
                 _ax_tas.set_xlim(*_xlim); _ax_tas.set_ylim(*_ylim)
                 _ax_tas.set_xlabel('SiO₂ (wt%)', fontsize=12)
                 _ax_tas.set_ylabel('Na₂O + K₂O (wt%)', fontsize=12)
-                _ax_tas.set_title(f"TAS diagram — {ACTIVE['name']}", fontsize=12, fontweight='bold')
+                _ax_tas.set_title(f"TAS diagram — {ACTIVE['name']}", fontsize=12)
                 _ax_tas.grid(True, linestyle='--', alpha=0.3, zorder=0)
                 plt.tight_layout()
                 st.pyplot(_fig_tas)
@@ -2408,21 +2474,21 @@ Viscosity models calibrated on specific compositions:
         aax1.add_artist(_leg1)
         aax1.legend(handles=_style_handles,fontsize=8,loc='center right')
         aax1.set_xlabel("Temperature (°C)",fontsize=11)
-        aax1.set_ylabel("log₁₀(η / Pa·s)",fontsize=11)
-        aax1.set_title("Viscosity vs Temperature\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11,fontweight='bold')
+        aax1.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)',fontsize=11)
+        aax1.set_title("Viscosity vs Temperature\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11)
         aax1.grid(True,linestyle='--',alpha=0.4)
 
         # Panel 2: Tg, m and A vs H2O
         aax2b=aax2.twinx()
         tg_crv=[ams_tg(x)-273.15 for x in ax_mol_dense]
         m_crv=[ams_m(x) for x in ax_mol_dense]
-        l1,=aax2.plot(ax_dense,tg_crv,'steelblue',linewidth=2.5,label='Tg (°C)')
-        l2,=aax2b.plot(ax_dense,m_crv,'tomato',linewidth=2.5,linestyle='--',label='m')
+        l1,=aax2.plot(ax_dense,tg_crv,'steelblue',linewidth=2.5,label='$T_g$ (°C)')
+        l2,=aax2b.plot(ax_dense,m_crv,'tomato',linewidth=2.5,linestyle='--',label='$\\mathit{m}$')
         aax2.set_xlabel("H₂O (wt%)",fontsize=11)
-        aax2.set_ylabel("Tg (°C)",fontsize=11,color='steelblue')
-        aax2b.set_ylabel("Fragility index m",fontsize=11,color='tomato')
+        aax2.set_ylabel("$T_g$ (°C)",fontsize=11,color='steelblue')
+        aax2b.set_ylabel("Fragility index $\\mathit{m}$",fontsize=11,color='tomato')
         aax2.tick_params(axis='y',labelcolor='steelblue'); aax2b.tick_params(axis='y',labelcolor='tomato')
-        aax2.set_title("Tg and m vs H₂O\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11,fontweight='bold')
+        aax2.set_title("$T_g$ and $\\mathit{m}$ vs H₂O\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11)
         aax2.legend(handles=[l1,l2],fontsize=8,loc='center right')
         aax2.grid(True,linestyle='--',alpha=0.4)
         # Secondary x-axis in mol%
@@ -2435,8 +2501,8 @@ Viscosity models calibrated on specific compositions:
         aax3.plot(ax_dense,[ams_visc(aT_fix+273.15,x,False) for x in ax_mol_dense],
                   'purple',linewidth=1.5,linestyle='--',label='A fitted')
         aax3.set_xlabel("H₂O (wt%)",fontsize=11)
-        aax3.set_ylabel("log₁₀(η / Pa·s)",fontsize=11)
-        aax3.set_title(f"Viscosity vs H₂O at {aT_fix:.0f} °C\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11,fontweight='bold')
+        aax3.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)',fontsize=11)
+        aax3.set_title(f"Viscosity vs H₂O at {aT_fix:.0f} °C\nAMS-B1 trachyte (Abeykoon et al. 2026)",fontsize=11)
         aax3.legend(fontsize=8,loc='upper right')
         aax3.grid(True,linestyle='--',alpha=0.4)
         # Secondary x-axis in mol%
@@ -2445,23 +2511,31 @@ Viscosity models calibrated on specific compositions:
 
         plt.tight_layout(); st.pyplot(afig)
 
-        abuf_all=io.BytesIO(); afig.savefig(abuf_all,format='png',dpi=200,bbox_inches='tight'); abuf_all.seek(0)
-        abuf_all_pdf = _fig_to_pdf(afig)
-        def _bbams(ax, fmt='png'):
-            _b = io.BytesIO()
-            from matplotlib.transforms import Bbox
-            _r = afig.canvas.get_renderer()
-            _bbs = [a.get_tightbbox(_r) for a in afig.axes
-                    if a.get_position().bounds == ax.get_position().bounds
-                    and a.get_tightbbox(_r) is not None]
-            bb = Bbox.union(_bbs).transformed(afig.dpi_scale_trans.inverted())
-            bb = Bbox([[bb.x0 - 0.1, bb.y0 - 0.1], [bb.x1 + 0.1, bb.y1 + 0.1]])
-            kw = {'dpi': 200} if fmt == 'png' else {}
-            afig.savefig(_b, format=fmt, bbox_inches=bb, **kw); _b.seek(0); return _b
-            
-        _ab1=_bbams(aax1); _ab2=_bbams(aax2); _ab3=_bbams(aax3)
-        _ab1_pdf=_bbams(aax1,'pdf'); _ab2_pdf=_bbams(aax2,'pdf'); _ab3_pdf=_bbams(aax3,'pdf')
-        plt.close(afig)
+        _ams_key = f"ams_{str(ax_list)}_{aT_min}_{aT_max}_{aT_fix}"
+        if st.session_state.get('_ams_buf_key') != _ams_key:
+            abuf_all=io.BytesIO(); afig.savefig(abuf_all,format='png',dpi=200,bbox_inches='tight'); abuf_all.seek(0)
+            abuf_all_pdf = _fig_to_pdf(afig)
+            def _bbams(ax, fmt='png'):
+                _b = io.BytesIO()
+                from matplotlib.transforms import Bbox
+                _r = afig.canvas.get_renderer()
+                _bbs = [a.get_tightbbox(_r) for a in afig.axes
+                        if a.get_position().bounds == ax.get_position().bounds
+                        and a.get_tightbbox(_r) is not None]
+                bb = Bbox.union(_bbs).transformed(afig.dpi_scale_trans.inverted())
+                bb = Bbox([[bb.x0 - 0.1, bb.y0 - 0.1], [bb.x1 + 0.1, bb.y1 + 0.1]])
+                kw = {'dpi': 200} if fmt == 'png' else {}
+                afig.savefig(_b, format=fmt, bbox_inches=bb, **kw); _b.seek(0); return _b
+            _ab1=_bbams(aax1); _ab2=_bbams(aax2); _ab3=_bbams(aax3)
+            _ab1_pdf=_bbams(aax1,'pdf'); _ab2_pdf=_bbams(aax2,'pdf'); _ab3_pdf=_bbams(aax3,'pdf')
+            plt.close(afig)
+            st.session_state['_ams_buf_key'] = _ams_key
+            st.session_state['_ams_bufs'] = (abuf_all, abuf_all_pdf, _ab1, _ab2, _ab3,
+                                             _ab1_pdf, _ab2_pdf, _ab3_pdf)
+        else:
+            plt.close(afig)
+        (abuf_all, abuf_all_pdf, _ab1, _ab2, _ab3,
+         _ab1_pdf, _ab2_pdf, _ab3_pdf) = st.session_state['_ams_bufs']
         _acols=st.columns(4)
         with _acols[0]:
             st.download_button("⬇️ All figures (PNG)",data=abuf_all,file_name="AMS_all.png",mime="image/png",key="dl_ams_all")
@@ -2576,50 +2650,58 @@ Viscosity models calibrated on specific compositions:
             hax1.plot(hT_arr-273.15,[hpg8_visc(T,x) for T in hT_arr],
                       color=hcmap(i),linewidth=2,label=f"{x:.0f} mol%")
         hax1.set_xlabel("Temperature (\u00b0C)",fontsize=11)
-        hax1.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)",fontsize=11)
-        hax1.set_title("Viscosity vs Temperature\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax1.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)',fontsize=11)
+        hax1.set_title("Viscosity vs Temperature\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11)
         hax1.legend(fontsize=8,loc='upper right',title='Excess Na\u2082O',title_fontsize=8)
         hax1.grid(True,linestyle='--',alpha=0.4)
 
         hax2b=hax2.twinx()
-        hl1,=hax2.plot(hx_dense,[hpg8_Tg(x)-273.15 for x in hx_dense],'steelblue',linewidth=2.5,label='Tg (\u00b0C)')
-        hl2,=hax2b.plot(hx_dense,[hpg8_m(x) for x in hx_dense],'tomato',linewidth=2.5,linestyle='--',label='m')
+        hl1,=hax2.plot(hx_dense,[hpg8_Tg(x)-273.15 for x in hx_dense],'steelblue',linewidth=2.5,label='$T_g$ (°C)')
+        hl2,=hax2b.plot(hx_dense,[hpg8_m(x) for x in hx_dense],'tomato',linewidth=2.5,linestyle='--',label='$\\mathit{m}$')
         hax2.set_xlabel("Excess Na\u2082O (mol%)",fontsize=11)
-        hax2.set_ylabel("Tg (\u00b0C)",fontsize=11,color='steelblue')
-        hax2b.set_ylabel("Fragility index m",fontsize=11,color='tomato')
+        hax2.set_ylabel("$T_g$ (°C)",fontsize=11,color='steelblue')
+        hax2b.set_ylabel("Fragility index $\\mathit{m}$",fontsize=11,color='tomato')
         hax2.tick_params(axis='y',labelcolor='steelblue'); hax2b.tick_params(axis='y',labelcolor='tomato')
-        hax2.set_title("Tg and m vs Excess Na₂O\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax2.set_title("$T_g$ and $\\mathit{m}$ vs Excess Na₂O\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11)
         hax2.legend(handles=[hl1,hl2],fontsize=8,loc='center right')
         hax2.grid(True,linestyle='--',alpha=0.4)
 
         hax3.plot(hx_dense,[hpg8_visc(hT_fixed+273.15,x) for x in hx_dense],'purple',linewidth=2.5)
         hax3.set_xlabel("Excess Na\u2082O (mol%)",fontsize=11)
-        hax3.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)",fontsize=11)
-        hax3.set_title(f"Viscosity vs Excess Na₂O at {hT_fixed:.0f} °C\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11,fontweight='bold')
+        hax3.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)',fontsize=11)
+        hax3.set_title(f"Viscosity vs Excess Na₂O at {hT_fixed:.0f} °C\nMetaluminous/peralkaline haplogranite (Stopponi et al. 2026)",fontsize=11)
         hax3.grid(True,linestyle='--',alpha=0.4)
 
         plt.tight_layout()
         st.pyplot(hfig)
 
-        # Save panels using axis bounding boxes — no new figures needed
-        hbuf_all = io.BytesIO()
-        hfig.savefig(hbuf_all, format='png', dpi=200, bbox_inches='tight'); hbuf_all.seek(0)
-        hbuf_all_pdf = _fig_to_pdf(hfig)
-        def _bb(fig, ax, fmt='png'):
-            _buf = io.BytesIO()
-            from matplotlib.transforms import Bbox
-            _r = fig.canvas.get_renderer()
-            _bbs = [a.get_tightbbox(_r) for a in fig.axes
-                    if a.get_position().bounds == ax.get_position().bounds
-                    and a.get_tightbbox(_r) is not None]
-            bb = Bbox.union(_bbs).transformed(fig.dpi_scale_trans.inverted())
-            bb = Bbox([[bb.x0 - 0.1, bb.y0 - 0.1], [bb.x1 + 0.1, bb.y1 + 0.1]])
-            kw = {'dpi': 200} if fmt == 'png' else {}
-            fig.savefig(_buf, format=fmt, bbox_inches=bb, **kw); _buf.seek(0); return _buf
-               
-        _hb1=_bb(hfig,hax1); _hb2=_bb(hfig,hax2); _hb3=_bb(hfig,hax3)
-        _hb1_pdf=_bb(hfig,hax1,'pdf'); _hb2_pdf=_bb(hfig,hax2,'pdf'); _hb3_pdf=_bb(hfig,hax3,'pdf')
-        plt.close(hfig)
+        _hpg_key = f"hpg_{hT_min}_{hT_max}_{hT_fixed}"
+        if st.session_state.get('_hpg_buf_key') != _hpg_key:
+            hbuf_all = io.BytesIO()
+            hfig.savefig(hbuf_all, format='png', dpi=200, bbox_inches='tight'); hbuf_all.seek(0)
+            hbuf_all_pdf = _fig_to_pdf(hfig)
+            def _bb(fig, ax, fmt='png'):
+                _buf = io.BytesIO()
+                from matplotlib.transforms import Bbox
+                _r = fig.canvas.get_renderer()
+                _bbs = [a.get_tightbbox(_r) for a in fig.axes
+                        if a.get_position().bounds == ax.get_position().bounds
+                        and a.get_tightbbox(_r) is not None]
+                bb = Bbox.union(_bbs).transformed(fig.dpi_scale_trans.inverted())
+                bb = Bbox([[bb.x0 - 0.1, bb.y0 - 0.1], [bb.x1 + 0.1, bb.y1 + 0.1]])
+                kw = {'dpi': 200} if fmt == 'png' else {}
+                fig.savefig(_buf, format=fmt, bbox_inches=bb, **kw); _buf.seek(0); return _buf
+            _hb1=_bb(hfig,hax1); _hb2=_bb(hfig,hax2); _hb3=_bb(hfig,hax3)
+            _hb1_pdf=_bb(hfig,hax1,'pdf'); _hb2_pdf=_bb(hfig,hax2,'pdf'); _hb3_pdf=_bb(hfig,hax3,'pdf')
+            plt.close(hfig)
+            st.session_state['_hpg_buf_key'] = _hpg_key
+            st.session_state['_hpg_bufs'] = (hbuf_all, hbuf_all_pdf,
+                                              _hb1, _hb2, _hb3,
+                                              _hb1_pdf, _hb2_pdf, _hb3_pdf)
+        else:
+            plt.close(hfig)
+        (hbuf_all, hbuf_all_pdf, _hb1, _hb2, _hb3,
+         _hb1_pdf, _hb2_pdf, _hb3_pdf) = st.session_state['_hpg_bufs']
         _hcols=st.columns(4)
         with _hcols[0]:
             st.download_button('⬇️ All figures (PNG)',data=hbuf_all,file_name='HPG8_all.png',mime='image/png',key='dl_hpg_all')
@@ -2721,52 +2803,60 @@ Viscosity models calibrated on specific compositions:
             aax1.plot(aT_arr-273.15, [and_visc(T,x) for T in aT_arr],
                       color=acmap(i), linewidth=2, label=f"{x:.0f}%")
         aax1.set_xlabel("Temperature (°C)", fontsize=11)
-        aax1.set_ylabel("log₁₀(η / Pa·s)", fontsize=11)
-        aax1.set_title("Viscosity vs Temperature\nAndesite (Valdivia et al. 2025)", fontsize=11, fontweight='bold')
+        aax1.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)', fontsize=11)
+        aax1.set_title("Viscosity vs Temperature\nAndesite (Valdivia et al. 2025)", fontsize=11)
         aax1.legend(fontsize=8, loc='upper right', title='TM content', title_fontsize=8)
         aax1.grid(True, linestyle='--', alpha=0.4)
 
         # Panel 2: Tg and m vs TM content
         aax2b = aax2.twinx()
-        al1, = aax2.plot(ax_dense, [and_Tg(x) for x in ax_dense], 'steelblue', linewidth=2.5, label='Tg (°C)')
-        al2, = aax2b.plot(ax_dense, [and_m(x) for x in ax_dense], 'tomato', linewidth=2.5, linestyle='--', label='m')
+        al1, = aax2.plot(ax_dense, [and_Tg(x) for x in ax_dense], 'steelblue', linewidth=2.5, label='$T_g$ (°C)')
+        al2, = aax2b.plot(ax_dense, [and_m(x) for x in ax_dense], 'tomato', linewidth=2.5, linestyle='--', label='$\\mathit{m}$')
         aax2.set_xlabel("TM content (wt% relative to AND100)", fontsize=11)
-        aax2.set_ylabel("Tg (°C)", fontsize=11, color='steelblue')
-        aax2b.set_ylabel("Fragility index m", fontsize=11, color='tomato')
+        aax2.set_ylabel("$T_g$ (°C)", fontsize=11, color='steelblue')
+        aax2b.set_ylabel("Fragility index $\\mathit{m}$", fontsize=11, color='tomato')
         aax2.tick_params(axis='y', labelcolor='steelblue'); aax2b.tick_params(axis='y', labelcolor='tomato')
-        aax2.set_title("Tg and m vs TM content\nAndesite (Valdivia et al. 2025)", fontsize=11, fontweight='bold')
+        aax2.set_title("$T_g$ and $\\mathit{m}$ vs TM content\nAndesite (Valdivia et al. 2025)", fontsize=11)
         aax2.legend(handles=[al1,al2], fontsize=8, loc='center right')
         aax2.grid(True, linestyle='--', alpha=0.4)
 
         # Panel 3: viscosity vs TM content at fixed T
         aax3.plot(ax_dense, [and_visc(aT_fixed+273.15,x) for x in ax_dense], 'purple', linewidth=2.5)
         aax3.set_xlabel("TM content (wt% relative to AND100)", fontsize=11)
-        aax3.set_ylabel("log₁₀(η / Pa·s)", fontsize=11)
-        aax3.set_title(f"Viscosity vs TM content at {aT_fixed:.0f} °C\nAndesite (Valdivia et al. 2025)", fontsize=11, fontweight='bold')
+        aax3.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)', fontsize=11)
+        aax3.set_title(f"Viscosity vs TM content at {aT_fixed:.0f} °C\nAndesite (Valdivia et al. 2025)", fontsize=11)
         aax3.grid(True, linestyle='--', alpha=0.4)
 
         plt.tight_layout()
         st.pyplot(afig)
 
-        # Save panels using bounding boxes
-        abuf_all = io.BytesIO()
-        afig.savefig(abuf_all, format='png', dpi=200, bbox_inches='tight'); abuf_all.seek(0)
-        abuf_all_pdf = _fig_to_pdf(afig)
-        def _bba(ax, fmt='png'):
-            _buf = io.BytesIO()
-            from matplotlib.transforms import Bbox
-            _r = afig.canvas.get_renderer()
-            _bbs = [a.get_tightbbox(_r) for a in afig.axes
-                    if a.get_position().bounds == ax.get_position().bounds
-                    and a.get_tightbbox(_r) is not None]
-            bb = Bbox.union(_bbs).transformed(afig.dpi_scale_trans.inverted())
-            bb = Bbox([[bb.x0 - 0.1, bb.y0 - 0.1], [bb.x1 + 0.1, bb.y1 + 0.1]])
-            kw = {'dpi': 200} if fmt == 'png' else {}
-            afig.savefig(_buf, format=fmt, bbox_inches=bb, **kw); _buf.seek(0); return _buf
-                
-        _ab1=_bba(aax1); _ab2=_bba(aax2); _ab3=_bba(aax3)
-        _ab1_pdf=_bba(aax1,'pdf'); _ab2_pdf=_bba(aax2,'pdf'); _ab3_pdf=_bba(aax3,'pdf')
-        plt.close(afig)
+        _and_key = f"and_{aT_min}_{aT_max}_{aT_fixed}"
+        if st.session_state.get('_and_buf_key') != _and_key:
+            abuf_all = io.BytesIO()
+            afig.savefig(abuf_all, format='png', dpi=200, bbox_inches='tight'); abuf_all.seek(0)
+            abuf_all_pdf = _fig_to_pdf(afig)
+            def _bba(ax, fmt='png'):
+                _buf = io.BytesIO()
+                from matplotlib.transforms import Bbox
+                _r = afig.canvas.get_renderer()
+                _bbs = [a.get_tightbbox(_r) for a in afig.axes
+                        if a.get_position().bounds == ax.get_position().bounds
+                        and a.get_tightbbox(_r) is not None]
+                bb = Bbox.union(_bbs).transformed(afig.dpi_scale_trans.inverted())
+                bb = Bbox([[bb.x0 - 0.1, bb.y0 - 0.1], [bb.x1 + 0.1, bb.y1 + 0.1]])
+                kw = {'dpi': 200} if fmt == 'png' else {}
+                afig.savefig(_buf, format=fmt, bbox_inches=bb, **kw); _buf.seek(0); return _buf
+            _ab1=_bba(aax1); _ab2=_bba(aax2); _ab3=_bba(aax3)
+            _ab1_pdf=_bba(aax1,'pdf'); _ab2_pdf=_bba(aax2,'pdf'); _ab3_pdf=_bba(aax3,'pdf')
+            plt.close(afig)
+            st.session_state['_and_buf_key'] = _and_key
+            st.session_state['_and_bufs'] = (abuf_all, abuf_all_pdf,
+                                              _ab1, _ab2, _ab3,
+                                              _ab1_pdf, _ab2_pdf, _ab3_pdf)
+        else:
+            plt.close(afig)
+        (abuf_all, abuf_all_pdf, _ab1, _ab2, _ab3,
+         _ab1_pdf, _ab2_pdf, _ab3_pdf) = st.session_state['_and_bufs']
         _acols = st.columns(4)
         with _acols[0]:
             st.download_button('⬇️ All figures (PNG)', data=abuf_all, file_name='Andesite_all.png', mime='image/png', key='dl_and_all')
@@ -2887,87 +2977,95 @@ Viscosity models calibrated on specific compositions:
             Tg_h  = strm_tg(x_mol, ACTIVE)
             _m_h  = get_m(x_mol, ACTIVE)
             visc  = [strm_myega(T, Tg_h, _m_h, ACTIVE['A']) for T in T_arr]
-            _lbl  = f"{h2o_wt:.1f} wt%" + (" (m lin.)" if _has_linear_m else "")
+            _lbl  = f"{h2o_wt:.1f} wt%" + (" ($\\mathit{m}$ lin.)" if _has_linear_m else "")
             ax_visc.plot(T_arr - 273.15, visc, color=cmap_s(i_h), linewidth=2, label=_lbl)
             if _has_linear_m:
                 visc_mc = [strm_myega(T, Tg_h, ACTIVE['m_d'], ACTIVE['A']) for T in T_arr]
                 ax_visc.plot(T_arr - 273.15, visc_mc, color=cmap_s(i_h), linewidth=1.5,
                              linestyle=':', alpha=0.7,
-                             label=f"{h2o_wt:.1f} wt% (m const.)" if i_h == 0 else "_")
+                             label=f"{h2o_wt:.1f} wt% ($\\mathit{{m}}$ const.)" if i_h == 0 else "_")
         ax_visc.set_xlabel("Temperature (°C)", fontsize=11)
-        ax_visc.set_ylabel("log₁₀(η / Pa·s)", fontsize=11)
+        ax_visc.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)', fontsize=11)
         ax_visc.set_title(f"Viscosity vs Temperature\n{ACTIVE['name']}",
-                           fontsize=11, fontweight='bold')
+                           fontsize=11)
         ax_visc.legend(fontsize=7, loc='upper right')
         ax_visc.grid(True, linestyle='--', alpha=0.4)
 
         # Panel 2: Tg and m vs H2O (twin axes, m constant)
         ax_tgm2 = ax_tgm.twinx()
-        l1, = ax_tgm.plot(h2o_dense, tg_curve, 'steelblue', linewidth=2.5, label='Tg (\u00b0C)')
+        l1, = ax_tgm.plot(h2o_dense, tg_curve, 'steelblue', linewidth=2.5, label='$T_g$ (°C)')
         _m_d_val = ACTIVE.get('m_d', ACTIVE.get('m', 35.0))
         if _has_linear_m:
             m_curve_dense = [get_m(wt_to_mol(h, ACTIVE), ACTIVE) for h in h2o_dense]
             l2, = ax_tgm2.plot(h2o_dense, m_curve_dense, color='tomato', linewidth=2.5,
-                                linestyle='--', label=f"m linear: {ACTIVE['m_d']} + {ACTIVE['m_slope']:.5f}·x")
+                                linestyle='--', label=f"$\\mathit{{m}}$ linear: {ACTIVE['m_d']} + {ACTIVE['m_slope']:.5f}·x")
             _m_pts = [get_m(wt_to_mol(r['h2o_wt'], ACTIVE), ACTIVE) for r in results_s]
             l2b, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [_m_d_val, _m_d_val],
                                  color='darkorange', linewidth=1.8, linestyle=':',
-                                 label=f"m constant = {_m_d_val}")
+                                 label=f"$\\mathit{{m}}$ constant = {_m_d_val}")
             _legend_handles = [l1, l2, l2b]
         else:
             l2, = ax_tgm2.plot([h2o_dense[0], h2o_dense[-1]], [_m_d_val, _m_d_val],
                                 color='tomato', linewidth=2.5, linestyle='--',
-                                label=f"m = {_m_d_val} (constant)")
+                                label=f"$\\mathit{{m}}$ = {_m_d_val} (constant)")
             _legend_handles = [l1, l2]
         ax_tgm2.set_ylim(min(_m_d_val*0.85, 20), max(_m_d_val*1.15, 50))
         ax_tgm.set_xlabel("H\u2082O (wt%)", fontsize=11)
-        ax_tgm.set_ylabel("Tg (\u00b0C)", fontsize=11, color='steelblue')
-        ax_tgm2.set_ylabel("Fragility index m", fontsize=11, color='tomato')
+        ax_tgm.set_ylabel("$T_g$ (°C)", fontsize=11, color='steelblue')
+        ax_tgm2.set_ylabel("Fragility index $\\mathit{m}$", fontsize=11, color='tomato')
         ax_tgm.tick_params(axis='y', labelcolor='steelblue')
         ax_tgm2.tick_params(axis='y', labelcolor='tomato')
-        ax_tgm.set_title(f"Tg and m vs H\u2082O\n{ACTIVE['name']}",
-                          fontsize=11, fontweight='bold')
+        ax_tgm.set_title(f"$T_g$ and $\\mathit{{m}}$ vs H\u2082O\n{ACTIVE['name']}",
+                          fontsize=11)
         ax_tgm.legend(handles=_legend_handles, fontsize=8, loc='lower left')
         ax_tgm.grid(True, linestyle='--', alpha=0.4)
 
         # Panel 3: viscosity vs H2O at fixed T
-        _lbl_vh = 'm linear' if _has_linear_m else 'm'
+        _lbl_vh = '$\\mathit{m}$ linear' if _has_linear_m else '$\\mathit{m}$'
         ax_vh2.plot(h2o_vh, visc_vh, 'purple', linewidth=2.5, label=_lbl_vh)
         if _has_linear_m:
             visc_vh_mc = [strm_myega(T_fixed_c+273.15,
                                       strm_tg(wt_to_mol(h, ACTIVE), ACTIVE),
                                       ACTIVE['m_d'], ACTIVE['A']) for h in h2o_vh]
             ax_vh2.plot(h2o_vh, visc_vh_mc, 'darkorange', linewidth=1.8,
-                        linestyle=':', label=f"m constant = {ACTIVE['m_d']}")
+                        linestyle=':', label=f"$\\mathit{{m}}$ constant = {ACTIVE['m_d']}")
             ax_vh2.legend(fontsize=8, loc='upper right')
         ax_vh2.set_xlabel("H\u2082O (wt%)", fontsize=11)
-        ax_vh2.set_ylabel("log\u2081\u2080(\u03b7 / Pa\u00b7s)", fontsize=11)
+        ax_vh2.set_ylabel(r'log$_{10}$($\mathit{\eta}$ / Pa·s)', fontsize=11)
         ax_vh2.set_title(f"Viscosity vs H\u2082O at {T_fixed_c:.0f} \u00b0C\n{ACTIVE['name']}",
-                         fontsize=11, fontweight='bold')
+                         fontsize=11)
         ax_vh2.grid(True, linestyle='--', alpha=0.4)
 
         plt.tight_layout()
         st.pyplot(fig_s)
 
-        # Save panels using axis bounding boxes — no new figures needed
-        buf_fig_s = io.BytesIO()
-        fig_s.savefig(buf_fig_s, format='png', dpi=200, bbox_inches='tight'); buf_fig_s.seek(0)
-        buf_fig_s_pdf = _fig_to_pdf(fig_s)
-        def _bbg(ax, fmt='png'):
-            _buf = io.BytesIO()
-            from matplotlib.transforms import Bbox
-            _r = fig_s.canvas.get_renderer()
-            _bbs = [a.get_tightbbox(_r) for a in fig_s.axes
-                    if a.get_position().bounds == ax.get_position().bounds
-                    and a.get_tightbbox(_r) is not None]
-            bb = Bbox.union(_bbs).transformed(fig_s.dpi_scale_trans.inverted())
-            bb = Bbox([[bb.x0 - 0.1, bb.y0 - 0.1], [bb.x1 + 0.1, bb.y1 + 0.1]])
-            kw = {'dpi': 200} if fmt == 'png' else {}
-            fig_s.savefig(_buf, format=fmt, bbox_inches=bb, **kw); _buf.seek(0); return _buf
-               
-        _bp0=_bbg(ax_visc); _bp1=_bbg(ax_tgm); _bp2=_bbg(ax_vh2)
-        _bp0_pdf=_bbg(ax_visc,'pdf'); _bp1_pdf=_bbg(ax_tgm,'pdf'); _bp2_pdf=_bbg(ax_vh2,'pdf')
-        plt.close(fig_s)
+        _strm_key = f"{ACTIVE['name']}_{T_min_c}_{T_max_c}_{T_fixed_c}_{h2o_input_s}"
+        if st.session_state.get('_strm_buf_key') != _strm_key:
+            buf_fig_s = io.BytesIO()
+            fig_s.savefig(buf_fig_s, format='png', dpi=200, bbox_inches='tight'); buf_fig_s.seek(0)
+            buf_fig_s_pdf = _fig_to_pdf(fig_s)
+            def _bbg(ax, fmt='png'):
+                _buf = io.BytesIO()
+                from matplotlib.transforms import Bbox
+                _r = fig_s.canvas.get_renderer()
+                _bbs = [a.get_tightbbox(_r) for a in fig_s.axes
+                        if a.get_position().bounds == ax.get_position().bounds
+                        and a.get_tightbbox(_r) is not None]
+                bb = Bbox.union(_bbs).transformed(fig_s.dpi_scale_trans.inverted())
+                bb = Bbox([[bb.x0 - 0.1, bb.y0 - 0.1], [bb.x1 + 0.1, bb.y1 + 0.1]])
+                kw = {'dpi': 200} if fmt == 'png' else {}
+                fig_s.savefig(_buf, format=fmt, bbox_inches=bb, **kw); _buf.seek(0); return _buf
+            _bp0=_bbg(ax_visc); _bp1=_bbg(ax_tgm); _bp2=_bbg(ax_vh2)
+            _bp0_pdf=_bbg(ax_visc,'pdf'); _bp1_pdf=_bbg(ax_tgm,'pdf'); _bp2_pdf=_bbg(ax_vh2,'pdf')
+            plt.close(fig_s)
+            st.session_state['_strm_buf_key'] = _strm_key
+            st.session_state['_strm_bufs'] = (buf_fig_s, buf_fig_s_pdf,
+                                               _bp0, _bp1, _bp2,
+                                               _bp0_pdf, _bp1_pdf, _bp2_pdf)
+        else:
+            plt.close(fig_s)
+        (buf_fig_s, buf_fig_s_pdf, _bp0, _bp1, _bp2,
+         _bp0_pdf, _bp1_pdf, _bp2_pdf) = st.session_state['_strm_bufs']
         _sname=ACTIVE['name'].replace(' ','_')
         _scols=st.columns(4)
         with _scols[0]:
@@ -2984,7 +3082,7 @@ Viscosity models calibrated on specific compositions:
             st.download_button('⬇️ η vs H₂O (PDF)',data=_bp2_pdf,file_name=f'{_sname}_visc_vs_H2O.pdf',mime='application/pdf',key='dl_strm_p2_pdf')
 
             # ── Summary table ─────────────────────────────────────────────────────────
-        st.subheader("📊 Tg summary")
+        st.markdown("### 📊 *T*<sub>g</sub> summary", unsafe_allow_html=True)
         df_tg = pd.DataFrame(results_s)
         df_tg.columns = ['H₂O (wt%)', 'H₂O (mol%)', 'Tg (K)', 'Tg (°C)']
         st.dataframe(df_tg, use_container_width=True, hide_index=True)
