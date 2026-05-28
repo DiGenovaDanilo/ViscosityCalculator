@@ -1693,7 +1693,7 @@ defined as the temperature at which log₁₀(*η*) = 12 Pa·s.
             ax.plot(x_smooth_ss, m_poly_sm_ss, 'darkorange', linewidth=2, label='Exp. saturation (ANN)')
             ax.axhline(m_d_ss, color='steelblue', linewidth=2, linestyle=':', label='$\\mathit{{m}}$ constant = {:.2f}'.format(m_d_ss))
             ax.set_xlabel('H₂O (mol%)'); ax.set_ylabel('Fragility index $\\mathit{m}$')
-            ax.set_title('Fragility index'); ax.legend(fontsize=8, loc='lower left'); ax.grid(True,linestyle='--',alpha=0.4)
+            ax.set_title(''); ax.legend(fontsize=8, loc='lower left'); ax.grid(True,linestyle='--',alpha=0.4)
 
         def panel_visc(ax, m_func, title):
             for i, r in enumerate(results_ss):
@@ -2455,7 +2455,7 @@ Viscosity models calibrated on specific compositions:
                    'A_fix':round(P['A_fixed'],5),
                    'A_fit':round(ams_A(ams_wt_mol(h)),5)} for h in ax_list]
 
-        afig,(aax1,aax2,aax3)=plt.subplots(1,3,figsize=(18,7))
+        afig,(aax1,aax2,aax3)=plt.subplots(1,3,figsize=(18,5))
 
         # Panel 1: visc vs T — both A_fixed (solid) and A_fitted (dashed)
         for i_h,h in enumerate(ax_list):
@@ -2644,7 +2644,7 @@ Viscosity models calibrated on specific compositions:
         hresults=[{'x':x,'A':round(hpg8_A(x),4),'Tg_K':round(hpg8_Tg(x),2),
                    'Tg_C':round(hpg8_Tg(x)-273.15,2),'m':round(hpg8_m(x),3)} for x in hx_list]
 
-        hfig,(hax1,hax2,hax3)=plt.subplots(1,3,figsize=(18,7))
+        hfig,(hax1,hax2,hax3)=plt.subplots(1,3,figsize=(18,5))
 
         for i,x in enumerate(hx_list):
             hax1.plot(hT_arr-273.15,[hpg8_visc(T,x) for T in hT_arr],
@@ -2796,7 +2796,7 @@ Viscosity models calibrated on specific compositions:
 
         aresults = [{'x':x,'Tg_C':round(and_Tg(x),2),'Tg_K':round(and_Tg(x)+273.15,2),'m':round(and_m(x),3)} for x in ax_list]
 
-        afig, (aax1, aax2, aax3) = plt.subplots(1, 3, figsize=(18,7))
+        afig, (aax1, aax2, aax3) = plt.subplots(1, 3, figsize=(18,5))
 
         # Panel 1: viscosity vs T
         for i,x in enumerate(ax_list):
@@ -2968,7 +2968,7 @@ Viscosity models calibrated on specific compositions:
                                  get_m(wt_to_mol(h, ACTIVE), ACTIVE), ACTIVE['A']) for h in h2o_list_s]
 
         # Single figure — 3 panels on one row
-        fig_s, (ax_visc, ax_tgm, ax_vh2) = plt.subplots(1, 3, figsize=(18, 7))
+        fig_s, (ax_visc, ax_tgm, ax_vh2) = plt.subplots(1, 3, figsize=(18, 5))
 
         # Panel 1: viscosity vs T
         _has_linear_m = ACTIVE.get('m_mode', 'constant') != 'constant'
