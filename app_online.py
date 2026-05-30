@@ -379,7 +379,7 @@ if st.session_state['hyd_done'] is None:
 with st.sidebar:
     st.markdown("## 🌋 MELVIS")
     st.caption("**MEL**t **VIS**cosity — volcanic melt viscosity platform by [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/)  \n"
-              "[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20401296.svg)](https://doi.org/10.5281/zenodo.20401296)")
+              "[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19945908.svg)](https://doi.org/10.5281/zenodo.19945908)")
     st.caption(f"v{MELVIS_VERSION}")
     st.divider()
     mode = st.radio(
@@ -546,12 +546,12 @@ with emphasis on volcanic processes, eruption dynamics, and advanced materials d
     st.divider()
     st.subheader("How to cite MELVIS")
     st.markdown("""
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20401296.svg)](https://doi.org/10.5281/zenodo.20401296)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19945908.svg)](https://doi.org/10.5281/zenodo.19945908)
 
 If you use MELVIS in your research, please cite:
 
 > Di Genova, D. (2026). *MELVIS — MELt VIScosity: a volcanic melt viscosity platform*.
-> Zenodo. https://doi.org/10.5281/zenodo.20401296
+> Zenodo. https://doi.org/10.5281/zenodo.19945908
 
 and the relevant model references shown in each module (see sidebar).
 Please also acknowledge the **GLASS laboratory** (CNR-ISSMC, Rome, Italy)
@@ -563,8 +563,8 @@ and the **ERC Consolidator Grant NANOVOLC** (grant 101044772).
   title     = {{MELVIS} --- {MELt} {VIScosity}: a volcanic melt viscosity platform},
   year      = {2026},
   publisher = {Zenodo},
-  doi       = {10.5281/zenodo.20401296},
-  url       = {https://doi.org/10.5281/zenodo.20401296}
+  doi       = {10.5281/zenodo.19945908},
+  url       = {https://doi.org/10.5281/zenodo.19945908}
 }"""
     with st.expander("📋 Copy BibTeX"):
         st.code(_BIBTEX, language="bibtex")
