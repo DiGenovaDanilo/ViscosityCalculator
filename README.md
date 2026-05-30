@@ -2,7 +2,7 @@
 
 **A volcanic melt viscosity platform**
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20401296.svg)](https://doi.org/10.5281/zenodo.20401296)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19945908.svg)](https://doi.org/10.5281/zenodo.19945908)
 
 Developed by the [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/) — CNR-ISSMC, Rome, Italy  
 ERC Consolidator Grant NANOVOLC (grant 101044772)  
@@ -98,7 +98,7 @@ An example file (`Example_compositions.csv`) is included.
 
 If you use MELVIS in your research, please cite:
 
-> Di Genova, D. (2026). *MELVIS — MELt VIScosity: a volcanic melt viscosity platform*. Zenodo. https://doi.org/10.5281/zenodo.20401296
+> Di Genova, D. (2026). *MELVIS — MELt VIScosity: a volcanic melt viscosity platform*. Zenodo. https://doi.org/10.5281/zenodo.19945908
 
 and the relevant model references for each module used (see the sidebar of the app for details).
 
