@@ -131,4 +131,4 @@ The **GLASS laboratory** (Gateway Laboratory of Amorphous and Structured Solids 
 
 ## 📄 License
 
-This software is released under the [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/) license.
+This software is released under the [MIT License](https://opensource.org/licenses/MIT). See the [LICENSE](LICENSE) file for the full text.
