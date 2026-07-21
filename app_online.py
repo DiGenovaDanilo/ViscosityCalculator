@@ -106,6 +106,147 @@ def _fig_to_pdf(fig, bbox_inches='tight'):
     _buf.seek(0)
     return _buf
 
+
+def build_viscosity_calculator_xlsx(sample_name, A, Tg_dry_K, m_dry,
+                                    b, c, d, m_inf, k, dry_molar_sum,
+                                    Tg_H2O_K=136.0, M_H2O=18.013,
+                                    default_T_C=700.0, default_H2O_wt=2.0,
+                                    default_model="ExpSat"):
+    """Standalone, formula-driven Excel calculator for one sample.
+
+    User inputs Temperature (deg C) and H2O (wt.%), picks the m(H2O) model
+    from a dropdown, and reads log10(viscosity) and viscosity (Pa.s).
+    Every step is a live Excel formula starting from editable parameter cells,
+    so the calculation is replicable 1:1 in Matlab / R / Python.
+
+    Model (Langhammer, Di Genova & Steinle-Neumann 2021, 10.1029/2021GC009918):
+      wt%->mol%: x = 100*(W/M_H2O) / (W/M_H2O + (100-W)*S/100)  [S=dry molar sum/100g]
+      Tg(H2O) Eq.9-10 (Gordon-Taylor, Tg_water=136 K):
+        w1=x/(b*(100-x)+x); w2=b*(100-x)/(b*(100-x)+x)
+        Tg=w1*Tg_H2O+w2*Tg_dry+c*w1*w2*(Tg_dry-Tg_H2O)+d*w1*w2^2*(Tg_dry-Tg_H2O)
+      m(H2O): constant=m_dry | Eq12=m_dry+(12-A)*ln(Tg/Tg_dry) | ExpSat=m_inf+(m_dry-m_inf)*exp(-k*x)
+      MYEGA Eq.7: log10(eta)=A+(12-A)*(Tg/T)*exp[(m/(12-A)-1)*(Tg/T-1)]
+    Returns: BytesIO ready for st.download_button.
+    """
+    from openpyxl.worksheet.datavalidation import DataValidation
+    NAVY, BLUE, INPUT, RESULT, PARAM = "1F3864", "2E5496", "FFF2CC", "D6E4F0", "EDEDED"
+    WHITE, GREY = "FFFFFF", "808080"
+    _thin = Side(style="thin", color="BFBFBF")
+    BORDER = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{sample_name} calculator"[:31]
+    ws.sheet_view.showGridLines = False
+    for col, w in {"A": 2.5, "B": 20, "C": 13, "D": 12, "E": 2.5,
+                   "F": 15, "G": 12, "H": 46}.items():
+        ws.column_dimensions[col].width = w
+
+    def put(coord, value, *, bold=False, size=11, color="000000", fill=None,
+            align="left", border=False, numfmt=None, italic=False):
+        cell = ws[coord]
+        cell.value = value
+        cell.font = Font(name="Calibri", bold=bold, size=size, color=color, italic=italic)
+        cell.alignment = Alignment(horizontal=align, vertical="center")
+        if fill:   cell.fill = PatternFill("solid", fgColor=fill)
+        if border: cell.border = BORDER
+        if numfmt: cell.number_format = numfmt
+        return cell
+
+    def header(rng, text):
+        ws.merge_cells(rng)
+        put(rng.split(":")[0], text, bold=True, size=11, color=WHITE, fill=BLUE)
+
+    ws.merge_cells("B2:H2")
+    put("B2", f"VISCOSITY CALCULATOR for {sample_name}", bold=True, size=16,
+        color=WHITE, fill=NAVY)
+    ws.row_dimensions[2].height = 26
+    ws.merge_cells("B3:H3")
+    put("B3", "MELVIS · hydrous MYEGA model — Langhammer, Di Genova & Steinle-Neumann (2021), G³ 10.1029/2021GC009918 · ANN: Langhammer, Di Genova & Steinle-Neumann (2022), G³ 10.1029/2022GC010673",
+        italic=True, size=9, color=GREY)
+
+    header("B5:D5", "INPUT")
+    put("B6", "Temperature  T", border=True)
+    put("C6", default_T_C, fill=INPUT, border=True, align="center", numfmt="0.0")
+    put("D6", "°C", border=True, color=GREY)
+    put("B7", "Water content", border=True)
+    put("C7", default_H2O_wt, fill=INPUT, border=True, align="center", numfmt="0.00")
+    put("D7", "wt.%", border=True, color=GREY)
+    put("B8", "m(H₂O) model", border=True)
+    put("C8", default_model, fill=INPUT, border=True, align="center")
+    put("D8", "▼ select", border=True, color=GREY)
+    dv = DataValidation(type="list", formula1='"constant,Eq12,ExpSat"',
+                        allow_blank=False, showDropDown=False)
+    dv.prompt = "constant = m fixed | Eq12 = m from Tg | ExpSat = exp. saturation"
+    ws.add_data_validation(dv); dv.add(ws["C8"])
+
+    header("B10:D10", "RESULT")
+    put("B11", "log₁₀(η)", bold=True, border=True)
+    put("C11", "=$G$6+(12-$G$6)*($C$19/$C$15)*EXP(($C$21/(12-$G$6)-1)*($C$19/$C$15-1))",
+        bold=True, size=13, fill=RESULT, border=True, align="center", color=NAVY, numfmt="0.000")
+    put("D11", "log₁₀ Pa·s", border=True, color=GREY)
+    put("B12", "Viscosity  η", bold=True, border=True)
+    put("C12", "=10^C11", bold=True, size=13, fill=RESULT, border=True,
+        align="center", color=NAVY, numfmt="0.00E+00")
+    put("D12", "Pa·s", border=True, color=GREY)
+
+    header("B14:D14", "INTERMEDIATE (calculated)")
+    rows = [
+        ("B15", "T (K)",  "=C6+273.15", "0.00", "K"),
+        ("B16", "H₂O (mol%)", f"=100*(C7/{M_H2O})/(C7/{M_H2O}+(100-C7)*$G$15/100)", "0.000", "mol%"),
+        ("B17", "w₁", "=C16/($G$9*(100-C16)+C16)", "0.0000", ""),
+        ("B18", "w₂", "=$G$9*(100-C16)/($G$9*(100-C16)+C16)", "0.0000", ""),
+        ("B19", "Tg (K)", "=C17*$G$12+C18*$G$7+$G$10*C17*C18*($G$7-$G$12)+$G$11*C17*C18*C18*($G$7-$G$12)", "0.00", "K"),
+        ("B20", "Tg (°C)", "=C19-273.15", "0.00", "°C"),
+        ("B21", "m (fragility)",
+         '=IF(C8="constant",$G$8,IF(C8="Eq12",$G$8+(12-$G$6)*LN(C19/$G$7),$G$13+($G$8-$G$13)*EXP(-$G$14*C16)))',
+         "0.000", ""),
+    ]
+    for r, label, formula, fmt, unit in rows:
+        rn = r[1:]
+        put(r, label, border=True)
+        put(f"C{rn}", formula, border=True, align="center", numfmt=fmt)
+        put(f"D{rn}", unit, border=True, color=GREY)
+
+    header("F5:H5", "PARAMETERS  (edit to replicate elsewhere)")
+    params = [
+        ("F6", "A", A, "log₁₀η∞ — pre-exponential, fixed (Langhammer 2021)"),
+        ("F7", "Tg_dry (K)", Tg_dry_K, "anhydrous glass transition T — ANN output"),
+        ("F8", "m_dry", m_dry, "anhydrous fragility m — ANN output"),
+        ("F9", "b", b, "Gordon-Taylor fit param (Eq.10)"),
+        ("F10", "c", c, "excess-mixing fit param (Eq.10)"),
+        ("F11", "d", d, "higher-order fit param (Eq.10)"),
+        ("F12", "Tg_H₂O (K)", Tg_H2O_K, "Tg of water endpoint = 136 K (Kohl et al. 2005)"),
+        ("F13", "m_inf", m_inf, "ExpSat: limiting fragility at high H₂O"),
+        ("F14", "k (mol%⁻¹)", k, "ExpSat: decay constant m(x)=m_inf+(m_dry-m_inf)·e^(-k·x)"),
+        ("F15", "S (mol/100g)", dry_molar_sum, "dry-oxide molar sum → wt%↔mol% conversion"),
+    ]
+    for coord, name, val, desc in params:
+        rn = coord[1:]
+        put(coord, name, bold=True, fill=PARAM, border=True)
+        put(f"G{rn}", val, fill=WHITE, border=True, align="center", numfmt="general")
+        put(f"H{rn}", desc, border=True, color="404040", size=9)
+
+    header("B23:H23", "EQUATIONS  (for Matlab / R / Python)")
+    eqs = [
+        f"H₂O mol%:  x = 100·(W/{M_H2O}) / ( W/{M_H2O} + (100−W)·S/100 )        [W = H₂O wt.%]",
+        "w₁ = x/(b·(100−x)+x)          w₂ = b·(100−x)/(b·(100−x)+x)",
+        "Tg(K) = w₁·Tg_H₂O + w₂·Tg_dry + c·w₁·w₂·(Tg_dry−Tg_H₂O) + d·w₁·w₂²·(Tg_dry−Tg_H₂O)     [Eq.9]",
+        "m — constant: m = m_dry  |  Eq12: m = m_dry + (12−A)·ln(Tg/Tg_dry)  |  ExpSat: m = m_inf + (m_dry−m_inf)·e^(−k·x)",
+        "log₁₀η = A + (12−A)·(Tg/T)·exp[ (m/(12−A)−1)·(Tg/T−1) ]     [MYEGA, Eq.7 · T in K]",
+    ]
+    for i, e in enumerate(eqs):
+        rr = 24 + i
+        ws.merge_cells(f"B{rr}:H{rr}")
+        put(f"B{rr}", e, size=9, color="404040", italic=True)
+
+    ws.merge_cells("B30:H30")
+    put("B30", "Generated by MELVIS · annviscositycalculator.streamlit.app · melvis@danilodigenova.org · Zenodo: zenodo.org/records/20460531",
+        size=8, color=GREY, italic=True)
+
+    _buf = io.BytesIO(); wb.save(_buf); _buf.seek(0)
+    return _buf
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 OXIDES  = ['SiO2','TiO2','Al2O3','FeO','MnO','MgO','CaO',
            'Na2O','K2O','P2O5','Cr2O3','Fe2O3','H2O']
@@ -358,7 +499,7 @@ def make_visc_sheet_hydrous(wb, sheet_name, results, m_func, tg_model_func, hdr_
 # ==============================================================================
 for key in ['calc_done','all_curves','rows_recalc','tg_m_dict','skipped',
             'fig','df_input','rows_specific',
-            'hyd_done','hyd_results','hyd_fig','hyd_buf_excel',
+            'hyd_done','hyd_results','hyd_fig','hyd_buf_excel','hyd_calc_excel',
             'hyd_buf_fig','hyd_meta','visc_h2o','wt_dry','non_mono','df_h_selected',
             'hyd_panel_bufs','hyd_panel_bufs_sname',
             'visc_h2o_bufs','visc_h2o_bufs_key',
@@ -1587,10 +1728,28 @@ defined as the temperature at which log₁₀(*η*) = 12 Pa·s.
         buf_fig2.seek(0)
         buf_fig2_pdf = _fig_to_pdf(fig2)
 
+        # ── Standalone interactive viscosity calculator (Excel) ───────────────
+        # S = dry-oxide molar sum per 100 g of dry melt (mol/100g); same molar
+        # masses as mol_conv() so wt%<->mol% matches the app exactly.
+        _mm_o=15.999; _mm_si=28.085; _mm_ti=47.867; _mm_al=26.982; _mm_fe=55.845
+        _mm_mn=54.938; _mm_mg=24.305; _mm_ca=40.078; _mm_na=22.99; _mm_k=39.098
+        _mm_p=30.974; _mm_cr=51.996; _mm_h=1.007
+        _mw = np.array([_mm_si+2*_mm_o, _mm_ti+2*_mm_o, 2*_mm_al+3*_mm_o, _mm_fe+_mm_o,
+                        _mm_mn+_mm_o, _mm_mg+_mm_o, _mm_ca+_mm_o, 2*_mm_na+_mm_o,
+                        2*_mm_k+_mm_o, 2*_mm_p+5*_mm_o, 2*_mm_cr+3*_mm_o,
+                        2*_mm_fe+3*_mm_o, 2*_mm_h+_mm_o])
+        _dry_molar_sum = float(np.sum(wt_dry[:-1] / _mw[:-1]))   # wt_dry: normalised, H2O=0
+        buf_calc = build_viscosity_calculator_xlsx(
+            sample_name=sname, A=A_FIXED, Tg_dry_K=Tg_d, m_dry=m_d,
+            b=b_fit, c=c_fit, d=d_fit, m_inf=_m_inf, k=_k,
+            dry_molar_sum=round(_dry_molar_sum, 6), M_H2O=float(_mw[-1]),
+            default_model="ExpSat")
+
         st.session_state['hyd_done']     = True
         st.session_state['hyd_results']  = results
         st.session_state['hyd_fig']      = fig2
         st.session_state['hyd_buf_excel']= buf_excel
+        st.session_state['hyd_calc_excel']= buf_calc
         st.session_state['hyd_buf_fig']  = buf_fig2
         st.session_state['hyd_buf_fig_pdf'] = buf_fig2_pdf
         # Store poly params to reconstruct m_poly after page reload
@@ -1756,7 +1915,21 @@ defined as the temperature at which log₁₀(*η*) = 12 Pa·s.
             st.download_button("⬇️ Download combined plot (PDF)",
                 data=st.session_state['hyd_buf_fig_pdf'],
                 file_name="hydrous_visc_{}.pdf".format(meta['sname']),
-                mime="application/pdf", key="dl_fig_main_pdf")    
+                mime="application/pdf", key="dl_fig_main_pdf")
+
+        if st.session_state.get('hyd_calc_excel') is not None:
+            st.markdown(
+                "**🧮 Interactive viscosity calculator** — a small Excel where you "
+                "just type *T* (°C) and H₂O (wt.%), pick the *m*(H₂O) model from a "
+                "dropdown, and read the viscosity. All steps are live formulas from "
+                "editable parameter cells, so you can replicate it in Matlab/R/Python."
+            )
+            st.download_button(
+                "⬇️ Download viscosity calculator (Excel, interactive)",
+                data=st.session_state['hyd_calc_excel'],
+                file_name="Viscosity_calculator_{}.xlsx".format(meta['sname']),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_calc_main")
 
         st.divider()
         st.subheader("🌡️ Viscosity vs H₂O at a fixed temperature")
