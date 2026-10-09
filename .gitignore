@@ -5,3 +5,20 @@ __pycache__/
 *.lnk
 build/
 dist/
+
+# Local working material, not part of the app
+Roba vecchia/
+Ultma versione funzionante/
+Claude_nuovo_account/
+Claude_stuff_backups/
+Mansuscript/
+Mailing_list/
+Riduzione spazio/
+MELVIS_v*/
+app_online_last.py
+CONTEXT_progetto_ANN.md
+Sommario Claude.txt
+convert_to_tflite.py
+*.txt
+!requirements.txt
+!runtime.txt
