@@ -39,6 +39,10 @@ MELVIS_VERSION = "1.2.0"
 # ── Page config (MUST be first Streamlit call) ────────────────────────────────
 st.set_page_config(page_title="MELVIS — MELt VIScosity", page_icon="🌋", layout="wide")
 
+st.info("**MELVIS has moved to [melvis.streamlit.app](https://melvis.streamlit.app)**, with new modules: "
+        "the life of a magma, a world map of volcanic melts, ascent modelling and fitting of your own data. "
+        "This page keeps MELVIS v1.2.0, the version described in Di Genova (2026), preprint on EarthArXiv, "
+        "[doi:10.31223/X5F806](https://doi.org/10.31223/X5F806).")
 
 # ── Analytics  ────────────────────────────────────────────────────────────────
 st.markdown(
