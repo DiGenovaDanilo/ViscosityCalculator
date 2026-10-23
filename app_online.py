@@ -34,14 +34,14 @@ PATH_TFLITE = os.path.join(BASE_DIR, "model.tflite")
 sys.path.insert(0, BASE_DIR)
 
 # ── Version ───────────────────────────────────────────────────────────────────
-MELVIS_VERSION = "1.2.0"
+MELVIS_VERSION = "1.2.1"
 
 # ── Page config (MUST be first Streamlit call) ────────────────────────────────
 st.set_page_config(page_title="MELVIS — MELt VIScosity", page_icon="🌋", layout="wide")
 
 st.info("**MELVIS has moved to [melvis.streamlit.app](https://melvis.streamlit.app)**, with new modules: "
         "the life of a magma, a world map of volcanic melts, ascent modelling and fitting of your own data. "
-        "This page keeps MELVIS v1.2.0, the version described in Di Genova (2026), preprint on EarthArXiv, "
+        "This page keeps MELVIS v1.2.1 (v1.2.0 with two bug fixes), the version described in Di Genova (2026), preprint on EarthArXiv, "
         "[doi:10.31223/X5F806](https://doi.org/10.31223/X5F806).")
 
 # ── Analytics  ────────────────────────────────────────────────────────────────
@@ -430,9 +430,11 @@ def fit_tg(x_mol_arr, Tg_arr, Tg_d):
                                    options={'maxiter':2000,'xatol':1e-6,'fatol':1e-6})
                     if res.fun < best_rmse and res.x[0]>0:
                         best_rmse=res.fun; best_p=res.x
-                        if best_rmse < 0.5:  # good enough — stop early
-                            return best_p, best_rmse
+                        if best_rmse < 0.5:  # good enough, stop early
+                            break
                 except: pass
+            if best_rmse < 0.5: break
+        if best_rmse < 0.5: break
     
     # Get parameter uncertainties via curve_fit covariance matrix
     from scipy.optimize import curve_fit as _cf
@@ -2275,11 +2277,12 @@ Viscosity models calibrated on specific compositions:
         'c':       1.686,
         'd':       -1.779,
         'Tg_H2O':  136.0,
-        'MW_dry':  51.01,    # g/mol — from S44F6 (Di Genova et al. 2023), using FeOtot
+        'MW_dry':  51.01,    # g/mol, effective dry molar weight used for the wt%-mol% conversion of H2O (reproduces the mol% values of Di Genova et al. 2023)
         'm_mode':  'linear',
         'composition': [{'label':'Peridotite melt',
-            'SiO2':43.28,'TiO2':0.01,'Al2O3':3.43,'FeOtot':6.40,'MnO':0.01,
-            'MgO':40.32,'CaO':6.49,'Na2O':0.02,'K2O':0.02,'P2O5':0.01,'H2O':0.00}],
+            # v1.2.1: sample S44F6 of Di Genova et al. (2023) converted from mol% (their Table 1) to wt%
+            'SiO2':48.11,'TiO2':0.01,'Al2O3':6.47,'FeOtot':8.51,'MnO':0.01,
+            'MgO':30.07,'CaO':6.73,'Na2O':0.02,'K2O':0.03,'P2O5':0.03,'H2O':0.00}],
         'no_tas': True,
     }
 

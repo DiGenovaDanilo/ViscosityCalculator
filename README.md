@@ -3,17 +3,17 @@
 **A volcanic melt viscosity platform**
 
 [![DOI](https://img.shields.io/badge/preprint%20DOI-10.31223%2FX5F806-blue)](https://doi.org/10.31223/X5F806)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20460531.svg)](https://doi.org/10.5281/zenodo.20460531)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19945908.svg)](https://doi.org/10.5281/zenodo.19945908)
 
 Developed by the [GLASS laboratory](https://www.danilodigenova.org/glass-laboratory/), CNR-ISSMC (now CNR-GEO), Rome, Italy  
 ERC Consolidator Grant NANOVOLC (grant 101044772)  
 **Principal Investigator:** Danilo Di Genova — [danilo.digenova@cnr.it](mailto:danilo.digenova@cnr.it)
 
-> **This repository is frozen at MELVIS v1.2.0**, the first public release and the version described in
+> **This repository is frozen at MELVIS v1.2.1** (v1.2.0, the first public release, with two bug fixes; see CHANGELOG.md), the version described in
 > Di Genova, D. (in review), *Computers & Geosciences*; preprint on EarthArXiv,
 > [doi:10.31223/X5F806](https://doi.org/10.31223/X5F806).
 > The code here stays open source under the MIT licence and is archived on Zenodo
-> ([doi:10.5281/zenodo.20460531](https://doi.org/10.5281/zenodo.20460531)).
+> ([doi:10.5281/zenodo.19945908](https://doi.org/10.5281/zenodo.19945908), all versions).
 > Later versions of MELVIS (v1.3 and above: the life of a magma, the world map of volcanic melts, ascent modelling,
 > fitting of your own data and more) run as a free web service at
 > **https://melvis.streamlit.app** and are not distributed as source code.
@@ -23,7 +23,7 @@ ERC Consolidator Grant NANOVOLC (grant 101044772)
 
 ## 🌐 Online access
 
-MELVIS v1.2.0, the version in this repository, runs at:  
+MELVIS v1.2.1, the version in this repository, runs at:  
 **https://annviscositycalculator.streamlit.app**  
 The latest version of MELVIS runs at **https://melvis.streamlit.app**
 
@@ -112,9 +112,9 @@ If you use MELVIS in your research, please cite:
 
 > Di Genova, D. (2026). *MELVIS: An open-source web application for computing and modelling the viscosity of volcanic melts*. EarthArXiv (preprint). https://doi.org/10.31223/X5F806
 
-The code of this repository (v1.2.0) is archived on Zenodo:
+The code of this repository (v1.2.1) is archived on Zenodo:
 
-> Di Genova, D. (2026). *MELVIS — MELt VIScosity: a volcanic melt viscosity platform* (v1.2.0). Zenodo. https://doi.org/10.5281/zenodo.20460531
+> Di Genova, D. (2026). *MELVIS — MELt VIScosity: a volcanic melt viscosity platform* (v1.2.1). Zenodo. https://doi.org/10.5281/zenodo.19945908
 
 and the relevant model references for each module used (see the sidebar of the app for details).
 
